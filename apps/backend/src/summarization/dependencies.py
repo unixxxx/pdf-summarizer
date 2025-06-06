@@ -1,26 +1,27 @@
-from fastapi import Depends
 from typing import Annotated
 
-from ..config import get_settings, Settings
-from .service import SummarizerService
+from fastapi import Depends
+
 from ..common.exceptions import ServiceUnavailableError
+from ..config import Settings, get_settings
+from .service import SummarizerService
 
 
 def get_summarizer_service(
-    settings: Annotated[Settings, Depends(get_settings)]
+    settings: Annotated[Settings, Depends(get_settings)],
 ) -> SummarizerService:
     """
     Get summarizer service instance.
-    
+
     Returns:
         SummarizerService instance
-        
+
     Raises:
         ServiceUnavailableError: If service cannot be initialized
     """
     try:
         return SummarizerService(settings)
-    except Exception as e:
+    except Exception:
         raise ServiceUnavailableError("Summarization")
 
 

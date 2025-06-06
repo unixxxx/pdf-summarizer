@@ -1,82 +1,151 @@
-# PdfSummarizer
+# PDF Summarizer
 
-<a alt="Nx logo" href="https://nx.dev" target="_blank" rel="noreferrer"><img src="https://raw.githubusercontent.com/nrwl/nx/master/images/nx-logo.png" width="45"></a>
+A modern web application for summarizing PDF documents using AI, built with Angular 19 and FastAPI.
 
-✨ Your new, shiny [Nx workspace](https://nx.dev) is almost ready ✨.
+## Features
 
-[Learn more about this workspace setup and its capabilities](https://nx.dev/getting-started/tutorials/angular-monorepo-tutorial?utm_source=nx_project&amp;utm_medium=readme&amp;utm_campaign=nx_projects) or run `npx nx graph` to visually explore what was created. Now, let's get you up to speed!
+- 📄 **PDF Upload & Processing** - Extract text from PDF files
+- 🤖 **AI-Powered Summarization** - Generate concise summaries using OpenAI or Ollama
+- 🔐 **OAuth Authentication** - Sign in with Google or GitHub
+- 📊 **Summary History** - View and manage past summaries
+- 🚀 **Modern Stack** - Angular 19, FastAPI, Tailwind CSS
 
-## Finish your CI setup
+## Quick Start
 
-[Click here to finish setting up your workspace!](https://cloud.nx.app/connect/LPacvfAqmF)
+### Prerequisites
 
+- Node.js 18+ and pnpm
+- Python 3.9+
+- Docker (for PostgreSQL)
+- Ollama (for local AI) or OpenAI API key
+- OAuth credentials (Google or GitHub)
 
-## Run tasks
+### Setup Instructions
 
-To run the dev server for your app, use:
+1. **Install dependencies:**
+   ```sh
+   pnpm install
+   npx nx install backend
+   ```
+
+2. **Set up the database:**
+   ```sh
+   # Start PostgreSQL
+   docker-compose up -d postgres
+   
+   # Create database and run migrations
+   cd apps/backend
+   uv run python scripts/setup_db.py
+   uv run alembic upgrade head
+   cd ../..
+   ```
+
+3. **Set up Ollama (for local AI):**
+   ```sh
+   ./setup-ollama.sh
+   ```
+
+4. **Configure environment:**
+   ```sh
+   cp apps/backend/.env.example apps/backend/.env
+   # Edit .env file to add:
+   # - JWT_SECRET_KEY (generate a secure value)
+   # - OAuth credentials (see OAuth Setup section)
+   ```
+
+5. **Run the application:**
+   ```sh
+   npx nx run-many -t serve
+   ```
+
+   The app will be available at:
+   - Frontend: http://localhost:4200
+   - Backend API: http://localhost:8000
+   - API Docs: http://localhost:8000/docs
+
+### Using OpenAI
+
+1. Update `apps/backend/.env`:
+   ```env
+   LLM_PROVIDER=openai
+   OPENAI_API_KEY=your-api-key-here
+   ```
+
+2. Follow steps 1, 3, and 4 from above.
+
+## Available LLM Models
+
+### Ollama Models
+- `llama2` - Default, good for general summarization
+- `mistral` - Fast and efficient
+- `neural-chat` - Optimized for conversational tasks
+- `phi` - Lightweight model
+
+To change models, update `OLLAMA_MODEL` in `.env`.
+
+## Development
+
+### Running Individual Services
 
 ```sh
+# Frontend only
 npx nx serve frontend
+
+# Backend only
+npx nx serve backend
+
+# Both services
+npx nx run-many -t serve
 ```
 
-To create a production bundle:
+### Building for Production
 
 ```sh
 npx nx build frontend
+npx nx build backend
 ```
 
-To see all available targets to run for a project, run:
+### Running Tests
 
 ```sh
-npx nx show project frontend
+npx nx test frontend
+npx nx test backend
 ```
 
-These targets are either [inferred automatically](https://nx.dev/concepts/inferred-tasks?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects) or defined in the `project.json` or `package.json` files.
+## OAuth Setup (Required)
 
-[More about running tasks in the docs &raquo;](https://nx.dev/features/run-tasks?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects)
+The application requires OAuth authentication. Configure at least one provider:
 
-## Add new projects
+### Google OAuth
+1. Go to [Google Cloud Console](https://console.cloud.google.com/apis/credentials)
+2. Create a new project or select existing one
+3. Create OAuth 2.0 credentials (Web application)
+4. Add authorized redirect URI: `http://localhost:8000/api/v1/auth/callback`
+5. Copy credentials to `.env`:
+   ```env
+   GOOGLE_CLIENT_ID=your-client-id
+   GOOGLE_CLIENT_SECRET=your-client-secret
+   ```
 
-While you could add new projects to your workspace manually, you might want to leverage [Nx plugins](https://nx.dev/concepts/nx-plugins?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects) and their [code generation](https://nx.dev/features/generate-code?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects) feature.
+### GitHub OAuth
+1. Go to [GitHub Settings > Developer settings > OAuth Apps](https://github.com/settings/developers)
+2. Create a new OAuth App
+3. Set Authorization callback URL: `http://localhost:8000/api/v1/auth/callback`
+4. Copy credentials to `.env`:
+   ```env
+   GITHUB_CLIENT_ID=your-client-id
+   GITHUB_CLIENT_SECRET=your-client-secret
+   ```
 
-Use the plugin's generator to create new projects.
+## Architecture
 
-To generate a new application, use:
+- **Frontend:** Angular 19 with standalone components, Tailwind CSS for styling
+- **Backend:** FastAPI with async support, Pydantic for validation
+- **AI/LLM:** LangChain with support for OpenAI and Ollama
+- **Authentication:** JWT tokens with OAuth2 providers
+- **Database:** PostgreSQL with pgvector extension for document storage
+- **Storage:** Database-backed persistent storage with duplicate detection
 
-```sh
-npx nx g @nx/angular:app demo
-```
+## License
 
-To generate a new library, use:
-
-```sh
-npx nx g @nx/angular:lib mylib
-```
-
-You can use `npx nx list` to get a list of installed plugins. Then, run `npx nx list <plugin-name>` to learn about more specific capabilities of a particular plugin. Alternatively, [install Nx Console](https://nx.dev/getting-started/editor-setup?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects) to browse plugins and generators in your IDE.
-
-[Learn more about Nx plugins &raquo;](https://nx.dev/concepts/nx-plugins?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects) | [Browse the plugin registry &raquo;](https://nx.dev/plugin-registry?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects)
-
-
-[Learn more about Nx on CI](https://nx.dev/ci/intro/ci-with-nx#ready-get-started-with-your-provider?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects)
-
-## Install Nx Console
-
-Nx Console is an editor extension that enriches your developer experience. It lets you run tasks, generate code, and improves code autocompletion in your IDE. It is available for VSCode and IntelliJ.
-
-[Install Nx Console &raquo;](https://nx.dev/getting-started/editor-setup?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects)
-
-## Useful links
-
-Learn more:
-
-- [Learn more about this workspace setup](https://nx.dev/getting-started/tutorials/angular-monorepo-tutorial?utm_source=nx_project&amp;utm_medium=readme&amp;utm_campaign=nx_projects)
-- [Learn about Nx on CI](https://nx.dev/ci/intro/ci-with-nx?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects)
-- [Releasing Packages with Nx release](https://nx.dev/features/manage-releases?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects)
-- [What are Nx plugins?](https://nx.dev/concepts/nx-plugins?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects)
-
-And join the Nx community:
-- [Discord](https://go.nx.dev/community)
-- [Follow us on X](https://twitter.com/nxdevtools) or [LinkedIn](https://www.linkedin.com/company/nrwl)
-- [Our Youtube channel](https://www.youtube.com/@nxdevtools)
-- [Our blog](https://nx.dev/blog?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects)
+MIT
