@@ -18,6 +18,10 @@ export const routes: Routes = [
         loadComponent: () => import('./upload/upload.component').then(m => m.UploadComponent) 
       },
       { 
+        path: 'text', 
+        loadComponent: () => import('./text-summarize/text-summarize.component').then(m => m.TextSummarizeComponent) 
+      },
+      { 
         path: 'history', 
         loadComponent: () => import('./history/history.component').then(m => m.HistoryComponent) 
       }

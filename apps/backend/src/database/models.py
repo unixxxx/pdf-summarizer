@@ -61,7 +61,7 @@ class Document(Base):
     file_size = Column(Integer, nullable=False)  # in bytes
     file_hash = Column(String(64), nullable=False)  # SHA256 hash
     page_count = Column(Integer, nullable=True)
-    storage_path = Column(String(500), nullable=False)  # S3 key or local path
+    storage_path = Column(String(500), nullable=True)  # S3 key or local path
     created_at = Column(DateTime, nullable=False, default=func.now())
 
     # Relationships

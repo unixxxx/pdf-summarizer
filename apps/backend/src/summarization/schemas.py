@@ -14,6 +14,16 @@ class TextSummaryRequest(BaseSchema):
     max_length: Optional[int] = Field(
         default=500, description="Maximum length of summary in words", ge=50, le=2000
     )
+    format: Optional[str] = Field(
+        default="paragraph",
+        description="Summary format: 'paragraph', 'bullets', or 'keypoints'",
+        pattern="^(paragraph|bullets|keypoints)$",
+    )
+    instructions: Optional[str] = Field(
+        default=None,
+        description="Additional instructions for summary generation",
+        max_length=500,
+    )
 
     @field_validator("text")
     @classmethod
@@ -25,7 +35,12 @@ class TextSummaryRequest(BaseSchema):
 
     model_config = BaseSchema.model_config.copy()
     model_config["json_schema_extra"] = {
-        "example": {"text": "Long text content to be summarized...", "max_length": 500}
+        "example": {
+            "text": "Long text content to be summarized...",
+            "max_length": 500,
+            "format": "paragraph",
+            "instructions": "Focus on technical details",
+        }
     }
 
 

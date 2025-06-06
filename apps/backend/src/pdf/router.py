@@ -75,6 +75,17 @@ async def summarize_pdf(
         Optional[int],
         Query(description="Maximum summary length in words", ge=50, le=2000),
     ] = 500,
+    format: Annotated[
+        Optional[str],
+        Query(
+            description="Summary format: 'paragraph', 'bullets', or 'keypoints'",
+            pattern="^(paragraph|bullets|keypoints)$"
+        ),
+    ] = "paragraph",
+    instructions: Annotated[
+        Optional[str],
+        Query(description="Additional instructions for summary generation", max_length=500),
+    ] = None,
     include_metadata: Annotated[
         bool, Query(description="Include PDF metadata in response")
     ] = True,
@@ -97,7 +108,7 @@ async def summarize_pdf(
         metadata = await pdf_service.extract_metadata(pdf_content, file.filename)
 
     # Generate summary
-    summary_result = await summarizer.summarize_pdf(text, max_length)
+    summary_result = await summarizer.summarize_pdf(text, max_length, format, instructions)
 
     # Calculate processing time
     processing_time = time.time() - start_time

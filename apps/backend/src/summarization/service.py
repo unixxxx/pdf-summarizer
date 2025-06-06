@@ -17,8 +17,6 @@ class SummarizerService:
     def __init__(self, settings: Settings):
         self.settings = settings
         self.llm: BaseLanguageModel
-        self.provider_name: str
-        self.model_name: str
 
         # Initialize LLM based on provider
         if settings.llm_provider.lower() == "ollama":
@@ -50,14 +48,23 @@ class SummarizerService:
             chunk_overlap=settings.chunk_overlap,
             separators=["\n\n", "\n", ". ", " ", ""],
         )
+        
 
-    async def summarize_text(self, text: str, max_length: Optional[int] = None) -> str:
+    async def summarize_text(
+        self,
+        text: str,
+        max_length: Optional[int] = None,
+        format: str = "paragraph",
+        instructions: Optional[str] = None,
+    ) -> str:
         """
         Generate a summary of the provided text.
 
         Args:
             text: Text to summarize
             max_length: Maximum length for summary in words
+            format: Summary format ('paragraph', 'bullets', or 'keypoints')
+            instructions: Additional instructions for summary generation
 
         Returns:
             Generated summary
@@ -78,56 +85,118 @@ class SummarizerService:
             # Choose strategy based on document size
             if len(docs) == 1:
                 # For short documents, use direct prompting
-                summary = await self._summarize_short_text(text, max_length)
+                summary = await self._summarize_short_text(
+                    text, max_length, format, instructions
+                )
             else:
                 # For longer documents, use map-reduce chain
-                summary = await self._summarize_long_text(docs, max_length)
+                summary = await self._summarize_long_text(
+                    docs, max_length, format, instructions
+                )
 
             return summary
 
         except Exception as e:
             raise SummarizationError(f"Failed to generate summary: {str(e)}") from e
 
-    async def _summarize_short_text(self, text: str, max_length: int) -> str:
+    async def _summarize_short_text(
+        self, text: str, max_length: int, format: str, instructions: Optional[str]
+    ) -> str:
         """Summarize short text using direct prompting."""
+        # Build format-specific instructions
+        format_instructions = {
+            "paragraph": "Write the summary as a coherent paragraph.",
+            "bullets": (
+                "Format the summary as bullet points. "
+                "Start each main point with '• '."
+            ),
+            "keypoints": (
+                "Extract and list the key points. "
+                "Start each point with a number (1., 2., etc.)."
+            ),
+        }
+        
+        format_instruction = format_instructions.get(
+            format, format_instructions["paragraph"]
+        )
+        
+        # Build the prompt
+        prompt_parts = [
+            "Please provide a comprehensive yet concise summary of the "
+            "following text.",
+            "The summary should capture all key points and main ideas.",
+            f"Keep the summary under {max_length} words.",
+            format_instruction,
+        ]
+        
+        # Add custom instructions if provided
+        if instructions:
+            prompt_parts.append(f"Additional requirements: {instructions}")
+        
         prompt = (
-            f"""Please provide a comprehensive yet concise summary of the """
-            f"""following text. The summary should capture all key points and main ideas.
-        Keep the summary under {max_length} words.
-        
-        Text to summarize:
-        {text}
-        
-        Summary:"""
+            "\n".join(prompt_parts)
+            + f"\n\nText to summarize:\n{text}\n\nSummary:"
         )
 
         response = await self.llm.ainvoke(prompt)
         return response.content.strip()
 
-    async def _summarize_long_text(self, docs: list[Document], max_length: int) -> str:
+    async def _summarize_long_text(
+        self,
+        docs: list[Document],
+        max_length: int,
+        format: str,
+        instructions: Optional[str],
+    ) -> str:
         """Summarize long text using map-reduce strategy."""
         # For Ollama, use a simpler approach to avoid serialization issues
         if self.settings.llm_provider.lower() == "ollama":
             # Summarize each chunk individually
             chunk_summaries = []
             for doc in docs[:10]:  # Limit to first 10 chunks to avoid timeout
-                prompt = f"""Summarize the following text concisely, focusing on key points:
-
-{doc.page_content}
-
-Summary:"""
+                prompt = (
+                    "Summarize the following text concisely, "
+                    "focusing on key points:\n\n"
+                    f"{doc.page_content}\n\n"
+                    "Summary:"
+                )
                 response = await self.llm.ainvoke(prompt)
                 chunk_summaries.append(response.content.strip())
 
             # Combine chunk summaries
             combined_text = "\n\n".join(chunk_summaries)
 
+            # Build format-specific instructions
+            format_instructions = {
+                "paragraph": "Write the summary as a coherent paragraph.",
+                "bullets": (
+                    "Format the summary as bullet points. "
+                    "Start each main point with '• '."
+                ),
+                "keypoints": (
+                    "Extract and list the key points. "
+                    "Start each point with a number (1., 2., etc.)."
+                ),
+            }
+            
+            format_instruction = format_instructions.get(
+                format, format_instructions["paragraph"]
+            )
+            
             # Generate final summary
-            final_prompt = f"""Create a comprehensive summary of the following summaries, keeping it under {max_length} words:
-
-{combined_text}
-
-Final summary:"""
+            final_prompt_parts = [
+                f"Create a comprehensive summary of the following summaries, "
+                f"keeping it under {max_length} words.",
+                format_instruction,
+            ]
+            
+            if instructions:
+                final_prompt_parts.append(f"Additional requirements: {instructions}")
+            
+            final_prompt = (
+                "\n".join(final_prompt_parts)
+                + f"\n\n{combined_text}\n\nFinal summary:"
+            )
             final_response = await self.llm.ainvoke(final_prompt)
             return final_response.content.strip()
 
@@ -141,16 +210,48 @@ Final summary:"""
             result = await chain.ainvoke({"input_documents": docs})
             summary = result["output_text"]
 
-            # Check if summary needs to be shortened
+            # Apply format and check length
             summary_words = len(summary.split())
-            if summary_words > max_length:
-                # Further condense the summary
-                prompt = f"""Please condense this summary to under {max_length} words 
-                while keeping all essential information:
+            needs_formatting = format != "paragraph"
+            needs_shortening = summary_words > max_length
+            
+            if needs_formatting or needs_shortening or instructions:
+                # Build format-specific instructions
+                format_instructions = {
+                    "paragraph": "Write the summary as a coherent paragraph.",
+                    "bullets": (
+                        "Format the summary as bullet points. "
+                        "Start each main point with '• '."
+                    ),
+                    "keypoints": (
+                        "Extract and list the key points. "
+                        "Start each point with a number (1., 2., etc.)."
+                    ),
+                }
                 
-                {summary}
+                format_instruction = format_instructions.get(
+                format, format_instructions["paragraph"]
+            )
                 
-                Condensed summary:"""
+                # Build the refinement prompt
+                prompt_parts = []
+                if needs_shortening:
+                    prompt_parts.append(
+                        f"Please condense this summary to under {max_length} "
+                        f"words while keeping all essential information."
+                    )
+                else:
+                    prompt_parts.append("Please reformat the following summary.")
+                
+                prompt_parts.append(format_instruction)
+                
+                if instructions:
+                    prompt_parts.append(f"Additional requirements: {instructions}")
+                
+                prompt = (
+                    "\n".join(prompt_parts)
+                    + f"\n\n{summary}\n\nRefined summary:"
+                )
 
                 response = await self.llm.ainvoke(prompt)
                 summary = response.content.strip()
@@ -158,7 +259,11 @@ Final summary:"""
             return summary
 
     async def summarize_pdf(
-        self, pdf_text: str, max_length: Optional[int] = None
+        self,
+        pdf_text: str,
+        max_length: Optional[int] = None,
+        format: str = "paragraph",
+        instructions: Optional[str] = None,
     ) -> dict[str, Any]:
         """
         Summarize PDF text and return detailed statistics.
@@ -166,12 +271,14 @@ Final summary:"""
         Args:
             pdf_text: Extracted text from PDF
             max_length: Maximum length for summary in words
+            format: Summary format ('paragraph', 'bullets', or 'keypoints')
+            instructions: Additional instructions for summary generation
 
         Returns:
             Dictionary containing summary and statistics
         """
         # Generate summary
-        summary = await self.summarize_text(pdf_text, max_length)
+        summary = await self.summarize_text(pdf_text, max_length, format, instructions)
 
         # Calculate statistics
         text_chunks = self.text_splitter.split_text(pdf_text)

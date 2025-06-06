@@ -1,11 +1,12 @@
 import { Component, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { HttpClient } from '@angular/common/http';
+import { FormsModule } from '@angular/forms';
 
 @Component({
   selector: 'app-upload',
   standalone: true,
-  imports: [CommonModule],
+  imports: [CommonModule, FormsModule],
   template: `
     <div class="max-w-4xl mx-auto py-8 px-4 sm:px-6 lg:px-8 animate-fade-in">
       <div class="glass rounded-2xl shadow-xl p-8">
@@ -116,6 +117,101 @@ import { HttpClient } from '@angular/common/http';
               </svg>
             </button>
           </div>
+
+          <!-- Summary Customization Options -->
+          <div class="mt-6 space-y-4">
+            <div>
+              <label
+                for="summary-length"
+                class="block text-sm font-medium text-foreground mb-2"
+              >
+                Summary Length
+              </label>
+              <div class="flex items-center gap-4">
+                <input
+                  id="summary-length"
+                  type="range"
+                  [(ngModel)]="summaryLength"
+                  min="100"
+                  max="1000"
+                  step="50"
+                  class="flex-1 h-2 bg-muted rounded-lg appearance-none cursor-pointer slider"
+                />
+                <div class="w-24 text-center">
+                  <span
+                    class="text-sm font-semibold text-primary-600 dark:text-primary-400"
+                  >
+                    {{ summaryLength() }}
+                  </span>
+                  <span class="text-xs text-muted-foreground ml-1">words</span>
+                </div>
+              </div>
+              <div class="flex justify-between mt-1">
+                <span class="text-xs text-muted-foreground">Concise</span>
+                <span class="text-xs text-muted-foreground">Detailed</span>
+              </div>
+            </div>
+
+            <div>
+              <div class="block text-sm font-medium text-foreground mb-2">
+                Summary Format
+              </div>
+              <div class="grid grid-cols-3 gap-2">
+                <button
+                  type="button"
+                  (click)="summaryFormat.set('paragraph')"
+                  [class.ring-2]="summaryFormat() === 'paragraph'"
+                  [class.ring-primary-600]="summaryFormat() === 'paragraph'"
+                  [class.bg-primary-50]="summaryFormat() === 'paragraph'"
+                  [class.dark:bg-primary-950]="summaryFormat() === 'paragraph'"
+                  class="px-3 py-2 text-sm font-medium rounded-lg border border-border hover:bg-muted/50 transition-all"
+                >
+                  Paragraph
+                </button>
+                <button
+                  type="button"
+                  (click)="summaryFormat.set('bullets')"
+                  [class.ring-2]="summaryFormat() === 'bullets'"
+                  [class.ring-primary-600]="summaryFormat() === 'bullets'"
+                  [class.bg-primary-50]="summaryFormat() === 'bullets'"
+                  [class.dark:bg-primary-950]="summaryFormat() === 'bullets'"
+                  class="px-3 py-2 text-sm font-medium rounded-lg border border-border hover:bg-muted/50 transition-all"
+                >
+                  Bullets
+                </button>
+                <button
+                  type="button"
+                  (click)="summaryFormat.set('keypoints')"
+                  [class.ring-2]="summaryFormat() === 'keypoints'"
+                  [class.ring-primary-600]="summaryFormat() === 'keypoints'"
+                  [class.bg-primary-50]="summaryFormat() === 'keypoints'"
+                  [class.dark:bg-primary-950]="summaryFormat() === 'keypoints'"
+                  class="px-3 py-2 text-sm font-medium rounded-lg border border-border hover:bg-muted/50 transition-all"
+                >
+                  Key Points
+                </button>
+              </div>
+            </div>
+
+            <div>
+              <label
+                for="instructions"
+                class="block text-sm font-medium text-foreground mb-2"
+              >
+                Additional Instructions
+                <span class="text-xs text-muted-foreground ml-1"
+                  >(optional)</span
+                >
+              </label>
+              <textarea
+                id="instructions"
+                [(ngModel)]="customInstructions"
+                rows="2"
+                placeholder="e.g., Focus on technical details, Extract action items..."
+                class="w-full px-3 py-2 text-sm border border-border rounded-lg bg-background text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent resize-none"
+              ></textarea>
+            </div>
+          </div>
           <button
             (click)="uploadFile()"
             [disabled]="isUploading()"
@@ -213,6 +309,11 @@ export class UploadComponent {
   isDragOver = signal(false);
   copySuccess = signal(false);
 
+  // Summary customization options
+  summaryLength = signal(500);
+  summaryFormat = signal<'paragraph' | 'bullets' | 'keypoints'>('paragraph');
+  customInstructions = signal('');
+
   onFileSelected(event: Event) {
     const input = event.target as HTMLInputElement;
     if (input.files && input.files[0]) {
@@ -232,8 +333,20 @@ export class UploadComponent {
     const formData = new FormData();
     formData.append('file', file);
 
+    // Build query parameters for customization
+    const params: Record<string, string> = {
+      max_length: this.summaryLength().toString(),
+      format: this.summaryFormat(),
+    };
+
+    // Add custom instructions if provided
+    const instructions = this.customInstructions().trim();
+    if (instructions) {
+      params['instructions'] = instructions;
+    }
+
     this.http
-      .post<{ summary: string }>('/api/v1/pdf/summarize', formData)
+      .post<{ summary: string }>('/api/v1/pdf/summarize', formData, { params })
       .subscribe({
         next: (response) => {
           this.summary.set(response.summary);
