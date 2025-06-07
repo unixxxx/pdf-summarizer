@@ -189,6 +189,90 @@ curl "http://localhost:8000/api/v1/pdf/export/{summary_id}?format=pdf" \
   -o summary.pdf
 ```
 
+## Next Session: Advanced Search and Filtering
+
+### Requirements to Implement:
+
+1. **Full-Text Search Enhancement**:
+   - Current: Basic ILIKE search in filenames and summaries
+   - TODO: Implement PostgreSQL full-text search with:
+     - GIN indexes for better performance
+     - ts_vector and ts_query for advanced text search
+     - Search ranking and relevance scoring
+     - Search highlighting in results
+     - Support for phrase search and boolean operators
+
+2. **Date Range Filtering**:
+   - Add query parameters to library endpoint:
+     - `created_after`: Filter documents created after this date
+     - `created_before`: Filter documents created before this date
+     - `processed_after`: Filter by processing date
+     - `processed_before`: Filter by processing date
+   - Add database indexes for date columns
+
+3. **File Size Filtering**:
+   - Add query parameters:
+     - `min_size_mb`: Minimum file size in MB
+     - `max_size_mb`: Maximum file size in MB
+   - Consider adding size categories (small, medium, large)
+
+4. **Processing Time Filtering**:
+   - Add query parameters:
+     - `min_processing_time`: Minimum processing time in seconds
+     - `max_processing_time`: Maximum processing time in seconds
+   - Useful for identifying documents that took long to process
+
+5. **Vector Similarity Search**:
+   - Leverage existing document embeddings in `document_chunks` table
+   - Add endpoint: `POST /api/v1/pdf/search/similar`
+   - Input: Query text or document ID
+   - Process:
+     - Generate embedding for query text
+     - Use pgvector's `<->` operator for cosine similarity
+     - Return documents ranked by similarity score
+   - Consider adding:
+     - Similarity threshold parameter
+     - Hybrid search (combine with text search)
+     - Filtering similar search results by tags/date
+
+### Implementation Plan:
+
+1. **Update Library Endpoint** (`/api/v1/pdf/library`):
+   ```python
+   # Additional query parameters
+   created_after: Optional[datetime] = Query(None)
+   created_before: Optional[datetime] = Query(None)
+   min_size_mb: Optional[float] = Query(None, ge=0)
+   max_size_mb: Optional[float] = Query(None, ge=0)
+   min_processing_time: Optional[float] = Query(None, ge=0)
+   max_processing_time: Optional[float] = Query(None, ge=0)
+   sort_by: Optional[str] = Query("created_at", regex="^(created_at|file_size|processing_time|relevance)$")
+   sort_order: Optional[str] = Query("desc", regex="^(asc|desc)$")
+   ```
+
+2. **Create Similar Documents Endpoint**:
+   ```python
+   @router.post("/search/similar")
+   async def search_similar_documents(
+       query: str | UUID,  # Text query or document ID
+       limit: int = 10,
+       threshold: float = 0.7,  # Similarity threshold
+       include_tags: Optional[List[str]] = None,  # Filter by tags
+   )
+   ```
+
+3. **Database Optimizations**:
+   - Add GIN index for full-text search
+   - Add B-tree indexes for date and numeric filters
+   - Consider materialized views for complex queries
+
+4. **Frontend Requirements**:
+   - Advanced search modal/drawer
+   - Date range pickers
+   - Size and time sliders
+   - Sort options dropdown
+   - Similar documents section
+
 ## Future Enhancements
 
 1. **Tag Management**:
@@ -197,11 +281,11 @@ curl "http://localhost:8000/api/v1/pdf/export/{summary_id}?format=pdf" \
    - Custom tag colors
    - Tag descriptions
 
-2. **Advanced Search**:
-   - Full-text search with highlighting
-   - Date range filtering
-   - File size filtering
-   - Vector similarity search
+2. **Advanced Search Features**:
+   - Saved searches
+   - Search history
+   - Search suggestions/autocomplete
+   - Export search results
 
 3. **Collections/Folders**:
    - Group documents into collections
@@ -212,6 +296,12 @@ curl "http://localhost:8000/api/v1/pdf/export/{summary_id}?format=pdf" \
    - Bulk tag assignment
    - Bulk export
    - Bulk delete
+
+5. **Analytics Dashboard**:
+   - Document statistics
+   - Tag usage analytics
+   - Processing time trends
+   - Storage usage breakdown
 
 ## Notes
 
