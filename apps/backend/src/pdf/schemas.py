@@ -109,6 +109,7 @@ class PDFSummaryHistoryItem(BaseSchema):
     """Schema for a single PDF summary history item."""
 
     id: UUID = Field(..., description="Summary ID")
+    document_id: UUID = Field(..., description="Document ID")
     fileName: str = Field(..., description="Original filename")
     fileSize: int = Field(..., description="File size in bytes")
     summary: str = Field(..., description="Generated summary")

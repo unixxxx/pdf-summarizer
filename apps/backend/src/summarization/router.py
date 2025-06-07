@@ -8,6 +8,7 @@ from ..auth.dependencies import CurrentUser
 from ..common.exceptions import EmptyContentError
 from ..database.models import Document, Summary
 from ..database.session import get_db
+from ..embeddings.dependencies import EmbeddingsServiceDep
 from .dependencies import SummarizerServiceDep
 from .schemas import TextSummaryRequest, TextSummaryResponse
 
@@ -31,6 +32,7 @@ router = APIRouter(
 async def summarize_text(
     request: TextSummaryRequest,
     summarizer: SummarizerServiceDep,
+    embeddings_service: EmbeddingsServiceDep,
     current_user: CurrentUser,
     db: AsyncSession = Depends(get_db),
 ) -> TextSummaryResponse:
@@ -69,6 +71,13 @@ async def summarize_text(
     )
     db.add(document)
     await db.flush()
+    
+    # Generate embeddings for the text document
+    await embeddings_service.create_document_embeddings(
+        document_id=str(document.id),
+        text=request.text,
+        db=db,
+    )
     
     # Create summary record
     summary_record = Summary(

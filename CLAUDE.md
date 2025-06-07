@@ -148,3 +148,4 @@ The application requires OAuth configuration:
 
 - Always use TailwindCSS 4 when working with styles or design related files
 - don't add coauthor to the commit messages
+- Always aim for production grade quality

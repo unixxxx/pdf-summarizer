@@ -91,3 +91,13 @@ class ServiceUnavailableError(PDFSummarizerException):
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail=f"{service} service is currently unavailable",
         )
+
+
+class NotFoundError(PDFSummarizerException):
+    """Raised when a resource is not found."""
+
+    def __init__(self, resource: str):
+        super().__init__(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"{resource} not found",
+        )

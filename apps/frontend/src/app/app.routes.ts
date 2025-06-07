@@ -24,6 +24,14 @@ export const routes: Routes = [
       { 
         path: 'history', 
         loadComponent: () => import('./history/history.component').then(m => m.HistoryComponent) 
+      },
+      { 
+        path: 'chat', 
+        loadComponent: () => import('./chat/chat.component').then(m => m.ChatComponent) 
+      },
+      { 
+        path: 'chat/:chatId', 
+        loadComponent: () => import('./chat/chat.component').then(m => m.ChatComponent) 
       }
     ]
   },

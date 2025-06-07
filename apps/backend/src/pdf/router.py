@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ..auth.dependencies import CurrentUser
 from ..database.models import Document, Summary
 from ..database.session import get_db
+from ..embeddings.dependencies import EmbeddingsServiceDep
 from ..summarization.dependencies import SummarizerServiceDep
 from .dependencies import PDFServiceDep, ValidatedPDFFile
 from .schemas import (
@@ -69,6 +70,7 @@ async def summarize_pdf(
     file: ValidatedPDFFile,
     pdf_service: PDFServiceDep,
     summarizer: SummarizerServiceDep,
+    embeddings_service: EmbeddingsServiceDep,
     current_user: CurrentUser,
     db: AsyncSession = Depends(get_db),
     max_length: Annotated[
@@ -136,6 +138,13 @@ async def summarize_pdf(
         )
         db.add(document)
         await db.flush()
+        
+        # Generate embeddings for the document
+        await embeddings_service.create_document_embeddings(
+            document_id=str(document.id),
+            text=text,
+            db=db,
+        )
 
     # Calculate word counts
     original_words = len(text.split())
@@ -210,28 +219,33 @@ async def get_pdf_history(
 
 @router.delete(
     "/history/{summary_id}",
-    summary="Delete PDF summary",
-    description="Delete a specific PDF summary from history",
+    summary="Delete document and all associated data",
+    description="Delete a document along with its summary, embeddings, and all chat sessions",
 )
 async def delete_pdf_summary(
     summary_id: UUID,
     current_user: CurrentUser,
     db: AsyncSession = Depends(get_db),
 ) -> dict:
-    """Delete a PDF summary from history."""
-    # Find the summary
+    """Delete a PDF summary and its associated document from history."""
+    # Find the summary with its document
     result = await db.execute(
-        select(Summary).where(
-            Summary.id == summary_id, Summary.user_id == current_user.id
+        select(Summary, Document)
+        .join(Document, Summary.document_id == Document.id)
+        .where(
+            Summary.id == summary_id, 
+            Summary.user_id == current_user.id
         )
     )
-    summary = result.scalar_one_or_none()
+    row = result.one_or_none()
 
-    if not summary:
+    if not row:
         raise HTTPException(status_code=404, detail="Summary not found")
+    
+    summary, document = row
 
-    # Delete the summary
-    await db.delete(summary)
+    # Delete the document (this will cascade delete summaries, chunks, and chats)
+    await db.delete(document)
     await db.commit()
 
-    return {"message": "Summary deleted successfully"}
+    return {"message": "Document and all associated data deleted successfully"}

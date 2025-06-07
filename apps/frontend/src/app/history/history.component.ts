@@ -1,11 +1,14 @@
 import { Component, OnInit, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { HttpClient } from '@angular/common/http';
-import { RouterModule } from '@angular/router';
+import { Router, RouterModule } from '@angular/router';
 import { ConfirmationModalComponent } from '../shared/confirmation-modal.component';
+import { ChatStore } from '../chat/chat.store';
+import { ChatService } from '../chat.service';
 
 interface SummaryItem {
   id: string;
+  document_id: string;
   fileName: string;
   fileSize: number;
   summary: string;
@@ -196,7 +199,7 @@ interface SummaryItem {
                 <p class="text-sm sm:text-base text-foreground/80 line-clamp-2 sm:line-clamp-3 leading-relaxed mb-3">
                   {{ item.summary }}
                 </p>
-                <div class="flex items-center justify-between">
+                <div class="flex items-center justify-between gap-3">
                   <button
                     (click)="viewFullSummary(item)"
                     class="text-xs sm:text-sm font-medium text-primary-600 dark:text-primary-400 hover:text-primary-700 dark:hover:text-primary-300 inline-flex items-center group/btn"
@@ -215,6 +218,25 @@ interface SummaryItem {
                         d="M9 5l7 7-7 7"
                       />
                     </svg>
+                  </button>
+                  <button
+                    (click)="startChat(item.document_id)"
+                    class="text-xs sm:text-sm font-medium text-accent-600 dark:text-accent-400 hover:text-accent-700 dark:hover:text-accent-300 inline-flex items-center group/btn"
+                  >
+                    <svg
+                      class="w-3 h-3 sm:w-4 sm:h-4 mr-1"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        stroke-width="2"
+                        d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
+                      />
+                    </svg>
+                    Chat
                   </button>
                 </div>
               </div>
@@ -369,8 +391,8 @@ interface SummaryItem {
 
       <app-confirmation-modal
         [isOpen]="showDeleteConfirm()"
-        title="Delete Summary"
-        message="Are you sure you want to delete this summary? This action cannot be undone."
+        title="Delete Document"
+        message="Are you sure you want to delete this document? This will also delete all associated chat sessions. This action cannot be undone."
         confirmText="Delete"
         cancelText="Cancel"
         (confirmed)="deleteSummary()"
@@ -382,6 +404,9 @@ interface SummaryItem {
 })
 export class HistoryComponent implements OnInit {
   private http = inject(HttpClient);
+  private router = inject(Router);
+  private chatStore = inject(ChatStore);
+  private chatService = inject(ChatService);
 
   summaries = signal<SummaryItem[]>([]);
   loading = signal(true);
@@ -472,5 +497,22 @@ export class HistoryComponent implements OnInit {
   closeModal() {
     this.showModal.set(false);
     this.selectedSummary.set(null);
+  }
+  
+  startChat(documentId: string) {
+    // Find the document info
+    const doc = this.summaries().find(s => s.document_id === documentId);
+    if (!doc) return;
+    
+    // Create a new chat session
+    this.chatStore.createChatSession(documentId, `Chat with ${doc.fileName}`).subscribe({
+      next: (chat) => {
+        // Navigate to chat view
+        this.router.navigate(['/app/chat', chat.id]);
+      },
+      error: (err) => {
+        console.error('Failed to create chat session:', err);
+      }
+    });
   }
 }

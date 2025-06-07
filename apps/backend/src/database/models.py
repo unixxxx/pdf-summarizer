@@ -108,7 +108,7 @@ class DocumentChunk(Base):
     document_id = Column(UUID(as_uuid=True), ForeignKey("documents.id"), nullable=False)
     chunk_index = Column(Integer, nullable=False)
     chunk_text = Column(Text, nullable=False)
-    embedding = Column(Vector(1536), nullable=True)  # Default for OpenAI embeddings
+    embedding = Column(Vector, nullable=True)  # Flexible dimension for any embedding model
     chunk_metadata = Column(Text, nullable=True)  # JSON metadata
     created_at = Column(DateTime, nullable=False, default=func.now())
 
