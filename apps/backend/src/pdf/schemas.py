@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import List, Optional
+from typing import Optional
 from uuid import UUID
 
 from pydantic import Field
@@ -128,7 +128,7 @@ class PDFSummaryHistoryItem(BaseSchema):
     createdAt: datetime = Field(..., description="Creation timestamp")
     processingTime: float = Field(..., description="Processing time in seconds")
     wordCount: int = Field(..., description="Summary word count")
-    tags: List[TagSchema] = Field(default_factory=list, description="Document tags")
+    tags: list[TagSchema] = Field(default_factory=list, description="Document tags")
 
     model_config = BaseSchema.model_config.copy()
     model_config["from_attributes"] = True

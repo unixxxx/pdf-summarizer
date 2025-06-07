@@ -1,3 +1,4 @@
+import re
 from typing import Any, Optional
 
 from langchain.chains.summarize import load_summarize_chain
@@ -317,40 +318,132 @@ class SummarizerService:
             # to avoid sending too much text to the LLM
             text_sample = text[:2000] if len(text) > 2000 else text
             
-            prompt = f"""Based on the following document summary and text sample, generate 3-8 relevant tags that categorize this document.
+            # For Ollama, we can't use structured output yet, so use the old approach
+            if self.settings.llm_provider.lower() == "ollama":
+                prompt = (
+                    f"Based on the following document summary and text sample, "
+                    f"generate 3-8 relevant tags that categorize this document.\n\n"
+                    f"Summary:\n{summary}\n\n"
+                    f"Text sample:\n{text_sample}\n\n"
+                    f"Guidelines for tags:\n"
+                    f"- Tags should be single words or short phrases (2-3 words max)\n"
+                    f"- Use lowercase letters only\n"
+                    f"- Separate multi-word tags with hyphens (e.g., 'machine-learning')\n"
+                    f"- Be specific and relevant to the content\n"
+                    f"- Include both broad categories and specific topics\n"
+                    f"- Examples: technology, finance, machine-learning, startup, "
+                    f"research, tutorial, api-documentation\n\n"
+                    f"Return only the tags as a comma-separated list without any "
+                    f"additional text or explanation.\n\n"
+                    f"Tags:"
+                )
 
-Summary:
-{summary}
-
-Text sample:
-{text_sample}
-
-Guidelines for tags:
-- Tags should be single words or short phrases (2-3 words max)
-- Use lowercase letters only
-- Separate multi-word tags with hyphens (e.g., "machine-learning")
-- Be specific and relevant to the content
-- Include both broad categories and specific topics
-- Examples: technology, finance, machine-learning, startup, research, tutorial, api-documentation
-
-Return only the tags as a comma-separated list without any additional text or explanation.
-
-Tags:"""
-
-            response = await self.llm.ainvoke(prompt)
-            tags_str = response.content.strip()
+                response = await self.llm.ainvoke(prompt)
+                tags_str = response.content.strip()
+                print(f"DEBUG: Raw tag response from LLM: {tags_str}")
+                
+                # First try to parse as comma-separated list (most common format)
+                if ',' in tags_str:
+                    # Split by comma and clean each tag
+                    tags = [tag.strip() for tag in tags_str.split(',')]
+                else:
+                    # If no commas, try splitting by newlines
+                    lines = tags_str.split('\n')
+                    tags = []
+                    
+                    for line in lines:
+                        line = line.strip()
+                        # Skip empty lines and header text
+                        if not line or 'here are' in line.lower() or 'tags that' in line.lower():
+                            continue
+                        
+                        # Remove numbering (e.g., "1.", "2.", etc.)
+                        cleaned_line = re.sub(r'^\d+\.\s*', '', line)
+                        # Remove bullet points
+                        cleaned_line = re.sub(r'^[-•]\s*', '', cleaned_line)
+                        cleaned_line = cleaned_line.strip()
+                        
+                        if cleaned_line:
+                            tags.append(cleaned_line)
+                
+                # Clean and validate tags
+                cleaned_tags = []
+                for tag in tags:
+                    # Remove any remaining numbering or special characters
+                    tag = re.sub(r'^\d+\.\s*', '', tag)
+                    tag = re.sub(r'^[-•]\s*', '', tag)
+                    tag = tag.strip().lower().replace(' ', '-')
+                    
+                    # Validate tag
+                    if tag and len(tag) > 1 and len(tag) <= 50:  # Max 50 chars to be safe
+                        # Remove any non-alphanumeric characters except hyphens
+                        tag = re.sub(r'[^a-z0-9-]', '', tag)
+                        # Remove multiple consecutive hyphens
+                        tag = re.sub(r'-+', '-', tag)
+                        # Remove leading/trailing hyphens
+                        tag = tag.strip('-')
+                        
+                        if tag and tag not in cleaned_tags:
+                            cleaned_tags.append(tag)
+                
+                # Limit to 8 tags
+                final_tags = cleaned_tags[:8]
+                print(f"DEBUG: Final cleaned tags: {final_tags}")
+                return final_tags
             
-            # Parse and clean tags
-            tags = [tag.strip().lower().replace(' ', '-') for tag in tags_str.split(',')]
-            # Remove empty tags and limit to 8
-            tags = [tag for tag in tags if tag and len(tag) > 1][:8]
-            
-            return tags
+            else:
+                # For OpenAI, use structured output with function calling
+                from langchain.pydantic_v1 import BaseModel as LangChainBaseModel, Field
+                
+                class TagResponse(LangChainBaseModel):
+                    """Response with generated tags."""
+                    tags: list[str] = Field(
+                        ...,
+                        description="List of 3-8 relevant tags. Tags should be lowercase with hyphens for multi-word tags."
+                    )
+                
+                # Create a chain with structured output
+                structured_llm = self.llm.with_structured_output(TagResponse)
+                
+                prompt = (
+                    f"Based on the following document summary and text sample, "
+                    f"generate 3-8 relevant tags that categorize this document.\n\n"
+                    f"Summary:\n{summary}\n\n"
+                    f"Text sample:\n{text_sample}\n\n"
+                    f"Guidelines:\n"
+                    f"- Tags should be single words or short phrases (2-3 words max)\n"
+                    f"- Use lowercase letters only\n"
+                    f"- Separate multi-word tags with hyphens (e.g., 'machine-learning')\n"
+                    f"- Be specific and relevant to the content\n"
+                    f"- Include both broad categories and specific topics\n"
+                    f"- Examples: technology, finance, machine-learning, startup, "
+                    f"research, tutorial, api-documentation"
+                )
+                
+                result = await structured_llm.ainvoke(prompt)
+                tags = result.tags
+                
+                # Clean tags using the same validation logic
+                cleaned_tags = []
+                for tag in tags:
+                    tag = tag.lower().strip().replace(' ', '-')
+                    tag = re.sub(r'[^a-z0-9-]', '', tag)
+                    tag = re.sub(r'-+', '-', tag)
+                    tag = tag.strip('-')
+                    
+                    if tag and len(tag) > 1 and len(tag) <= 50 and tag not in cleaned_tags:
+                        cleaned_tags.append(tag)
+                
+                final_tags = cleaned_tags[:8]
+                print(f"DEBUG: Final cleaned tags from structured output: {final_tags}")
+                return final_tags
             
         except Exception as e:
             # If tag generation fails, return empty list
             # We don't want to fail the entire summarization process
             print(f"Failed to generate tags: {str(e)}")
+            import traceback
+            traceback.print_exc()
             return []
 
     def get_service_info(self) -> dict[str, Any]:

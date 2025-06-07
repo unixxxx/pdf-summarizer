@@ -1,11 +1,14 @@
 import hashlib
+import random
 import time
-from typing import Annotated, List, Optional
+import urllib.parse
+from typing import Annotated, Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import desc, select
+from sqlalchemy import desc, select, func
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import joinedload, selectinload
 
 from ..auth.dependencies import CurrentUser
 from ..database.models import Document, Summary, Tag
@@ -19,6 +22,7 @@ from .schemas import (
     PDFSummaryHistoryItem,
     PDFSummaryResponse,
     PDFTextExtractionResponse,
+    TagSchema,
 )
 
 router = APIRouter(
@@ -123,7 +127,7 @@ async def summarize_pdf(
 
     # Check if document already exists
     existing_doc = await db.execute(
-        select(Document).where(
+        select(Document).options(selectinload(Document.tags)).where(
             Document.user_id == current_user.id, Document.file_hash == file_hash
         )
     )
@@ -156,15 +160,37 @@ async def summarize_pdf(
             text=text,
             db=db,
         )
-        
-        # Process and create tags
-        generated_tags = summary_result.get("tags", [])
+    
+    # Process and create tags (for both new and existing documents)
+    generated_tags = summary_result.get("tags", [])
+    tag_objects = []
+    print(f"DEBUG: Generated {len(generated_tags)} tags from summarization: {generated_tags}")
+    
+    # Only process tags if document doesn't already have them
+    # For existing documents, check if they have tags
+    existing_tags = []
+    if document.id:  # Check if it's an existing document
+        # Query to check if document has tags
+        tag_check = await db.execute(
+            select(func.count(Tag.id))
+            .join(Document.tags)
+            .where(Document.id == document.id)
+        )
+        tag_count = tag_check.scalar()
+        existing_tags = tag_count > 0
+    
+    if not existing_tags:
+        print(f"DEBUG: Document has no tags, creating them...")
         for tag_name in generated_tags:
             if not tag_name:
                 continue
                 
+            # Ensure tag name is not too long (max 100 chars in DB)
+            tag_name = tag_name[:50] if len(tag_name) > 50 else tag_name
+            
             # Create slug from tag name
             slug = tag_name.lower().strip().replace(' ', '-')
+            slug = slug[:50] if len(slug) > 50 else slug
             
             # Check if tag already exists
             existing_tag = await db.execute(
@@ -173,17 +199,43 @@ async def summarize_pdf(
             tag = existing_tag.scalar_one_or_none()
             
             if not tag:
+                # Generate a random color for the tag
+                colors = [
+                    "#3B82F6",  # Blue
+                    "#10B981",  # Green
+                    "#F59E0B",  # Yellow
+                    "#EF4444",  # Red
+                    "#8B5CF6",  # Purple
+                    "#EC4899",  # Pink
+                    "#14B8A6",  # Teal
+                    "#F97316",  # Orange
+                    "#6366F1",  # Indigo
+                    "#84CC16",  # Lime
+                ]
+                color = random.choice(colors)
+                
                 # Create new tag
                 tag = Tag(
                     name=tag_name,
                     slug=slug,
+                    color=color,
                 )
                 db.add(tag)
                 await db.flush()
             
-            # Add tag to document
-            if tag not in document.tags:
-                document.tags.append(tag)
+            tag_objects.append(tag)
+        
+        # Add all tags to the document at once
+        if tag_objects:
+            print(f"DEBUG: Adding {len(tag_objects)} tags to document {document.id}")
+            # Use a more explicit approach to avoid lazy loading issues
+            document.tags.extend(tag_objects)
+            print(f"DEBUG: Document now has {len(document.tags)} tags")
+            # Flush to ensure the many-to-many relationships are saved
+            await db.flush()
+            print(f"DEBUG: Added {len(tag_objects)} tags to document {document.id}")
+    else:
+        print(f"DEBUG: Document already has tags, skipping tag creation")
 
     # Calculate word counts
     original_words = len(text.split())
@@ -216,7 +268,7 @@ async def summarize_pdf(
 
 @router.get(
     "/library",
-    response_model=List[PDFSummaryHistoryItem],
+    response_model=list[PDFSummaryHistoryItem],
     summary="Get document library",
     description="Get all documents with filtering and search capabilities",
 )
@@ -225,26 +277,27 @@ async def get_document_library(
     db: AsyncSession = Depends(get_db),
     search: Annotated[Optional[str], Query(description="Search in filename and summary")] = None,
     tag: Annotated[Optional[str], Query(description="Filter by tag slug")] = None,
-    tags: Annotated[Optional[List[str]], Query(description="Filter by multiple tag slugs")] = None,
+    tags: Annotated[Optional[list[str]], Query(description="Filter by multiple tag slugs")] = None,
     limit: Annotated[int, Query(description="Maximum number of results", ge=1, le=100)] = 50,
     offset: Annotated[int, Query(description="Number of results to skip", ge=0)] = 0,
-) -> List[PDFSummaryHistoryItem]:
+) -> list[PDFSummaryHistoryItem]:
     """Get user's document library with search and filtering."""
     from sqlalchemy import or_
-    from sqlalchemy.orm import selectinload
     
-    # Build base query
+    # Build base query with proper eager loading
     query = (
-        select(Summary, Document)
-        .join(Document, Summary.document_id == Document.id)
+        select(Summary)
         .where(Summary.user_id == current_user.id)
-        .options(selectinload(Document.tags))
+        .options(
+            joinedload(Summary.document).joinedload(Document.tags)
+        )
     )
     
     # Apply search filter
     if search:
         search_term = f"%{search}%"
-        query = query.where(
+        # Join Document for search
+        query = query.join(Summary.document).where(
             or_(
                 Document.filename.ilike(search_term),
                 Summary.summary_text.ilike(search_term)
@@ -261,6 +314,9 @@ async def get_document_library(
             tag_slugs.extend(tags)
         
         # Filter documents that have any of the specified tags
+        # Join through document if not already joined
+        if not search:
+            query = query.join(Summary.document)
         query = query.join(Document.tags).where(Tag.slug.in_(tag_slugs))
     
     # Apply ordering, limit and offset
@@ -271,7 +327,10 @@ async def get_document_library(
 
     # Transform results to response schema
     history_items = []
-    for summary, document in result:
+    summaries = result.scalars().unique().all()
+    
+    for summary in summaries:
+        document = summary.document
         history_items.append(
             PDFSummaryHistoryItem(
                 id=summary.id,
@@ -287,12 +346,12 @@ async def get_document_library(
                 llm_model=summary.llm_model,
                 createdAt=summary.created_at,
                 tags=[
-                    {
-                        "id": tag.id,
-                        "name": tag.name,
-                        "slug": tag.slug,
-                        "color": tag.color
-                    }
+                    TagSchema(
+                        id=tag.id,
+                        name=tag.name,
+                        slug=tag.slug,
+                        color=tag.color
+                    )
                     for tag in document.tags
                 ],
             )
@@ -422,25 +481,29 @@ async def export_summary(
     base_filename = document.filename.rsplit('.', 1)[0]
     export_filename = f"{base_filename}_summary.{extension}"
     
+    # Properly encode filename for Content-Disposition header
+    # Use RFC 5987 encoding for non-ASCII filenames
+    encoded_filename = urllib.parse.quote(export_filename.encode('utf-8'))
+    
     return Response(
         content=content,
         media_type=media_type,
         headers={
-            "Content-Disposition": f'attachment; filename="{export_filename}"'
+            "Content-Disposition": f"attachment; filename*=UTF-8''{encoded_filename}"
         }
     )
 
 
 @router.get(
     "/tags",
-    response_model=List[dict],
+    response_model=list[dict],
     summary="Get all tags",
     description="Get all available tags with document counts",
 )
 async def get_tags(
     current_user: CurrentUser,
     db: AsyncSession = Depends(get_db),
-) -> List[dict]:
+) -> list[dict]:
     """Get all tags used by the current user's documents."""
     from sqlalchemy import func
     
@@ -473,7 +536,7 @@ async def get_tags(
 # Keep the old history endpoint for backward compatibility
 @router.get(
     "/history",
-    response_model=List[PDFSummaryHistoryItem],
+    response_model=list[PDFSummaryHistoryItem],
     summary="Get PDF summary history (deprecated)",
     description="Deprecated: Use /library instead. Get all PDF summaries for the current user",
     deprecated=True,
@@ -481,7 +544,7 @@ async def get_tags(
 async def get_pdf_history(
     current_user: CurrentUser,
     db: AsyncSession = Depends(get_db),
-) -> List[PDFSummaryHistoryItem]:
+) -> list[PDFSummaryHistoryItem]:
     """Get user's PDF summary history (deprecated - use /library)."""
     # Redirect to library endpoint
     return await get_document_library(current_user, db)

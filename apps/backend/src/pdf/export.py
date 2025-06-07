@@ -5,13 +5,16 @@ from io import BytesIO
 from typing import Optional
 
 from reportlab.lib.pagesizes import letter
-from reportlab.lib.styles import getSampleStyleSheet
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import inch
 from reportlab.platypus import (
     Paragraph,
     SimpleDocTemplate,
     Spacer,
 )
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
+from reportlab.lib.fonts import addMapping
 import markdown2
 
 
@@ -68,6 +71,16 @@ class ExportService:
         tags: Optional[list] = None,
     ) -> bytes:
         """Export summary as PDF."""
+        from xml.sax.saxutils import escape
+        
+        # Helper function to escape text for ReportLab
+        def safe_text(text: str) -> str:
+            """Escape text for safe use in ReportLab Paragraphs."""
+            if not text:
+                return ""
+            # Escape XML special characters
+            return escape(str(text))
+        
         buffer = BytesIO()
         doc = SimpleDocTemplate(buffer, pagesize=letter)
         story = []
@@ -75,7 +88,7 @@ class ExportService:
         
         # Title
         title_style = styles['Title']
-        story.append(Paragraph(filename, title_style))
+        story.append(Paragraph(safe_text(filename), title_style))
         story.append(Spacer(1, 0.5*inch))
         
         # Metadata
@@ -85,7 +98,7 @@ class ExportService:
             info_lines.append(f"• Pages: {metadata.get('pages', 'N/A')}")
             info_lines.append(f"• Size: {metadata.get('size_mb', 'N/A')} MB")
             if metadata.get('author'):
-                info_lines.append(f"• Author: {metadata['author']}")
+                info_lines.append(f"• Author: {safe_text(metadata['author'])}")
             info_lines.append(f"• Processed: {datetime.utcnow().strftime('%Y-%m-%d %H:%M UTC')}")
             
             for line in info_lines:
@@ -95,7 +108,7 @@ class ExportService:
         # Tags
         if tags:
             story.append(Paragraph("Tags", styles['Heading2']))
-            tag_text = ", ".join(tags)
+            tag_text = ", ".join([safe_text(tag) for tag in tags])
             story.append(Paragraph(tag_text, styles['Normal']))
             story.append(Spacer(1, 0.3*inch))
         
@@ -106,7 +119,7 @@ class ExportService:
         # Split summary into paragraphs
         for para in summary.split('\n\n'):
             if para.strip():
-                story.append(Paragraph(para, styles['Normal']))
+                story.append(Paragraph(safe_text(para), styles['Normal']))
                 story.append(Spacer(1, 0.1*inch))
         
         # Footer
@@ -115,9 +128,40 @@ class ExportService:
         story.append(Paragraph(footer_text, styles['Normal']))
         
         # Build PDF
-        doc.build(story)
-        buffer.seek(0)
-        return buffer.read()
+        try:
+            doc.build(story)
+            buffer.seek(0)
+            return buffer.read()
+        except Exception as e:
+            # If PDF generation fails (e.g., due to font issues with Unicode),
+            # fall back to a simple text-based PDF
+            print(f"PDF generation failed: {e}. Falling back to simple PDF.")
+            
+            # Reset buffer
+            buffer = BytesIO()
+            doc = SimpleDocTemplate(buffer, pagesize=letter)
+            story = []
+            
+            # Create a simple PDF with ASCII-only content
+            story.append(Paragraph("Summary Document", styles['Title']))
+            story.append(Spacer(1, 0.5*inch))
+            story.append(Paragraph(
+                "Note: The original content contains special characters that could not be rendered in PDF format. "
+                "Please use the Markdown or Text export options for full Unicode support.",
+                styles['Normal']
+            ))
+            story.append(Spacer(1, 0.3*inch))
+            
+            # Try to include ASCII-only version of the summary
+            ascii_summary = summary.encode('ascii', 'ignore').decode('ascii')
+            if ascii_summary.strip():
+                story.append(Paragraph("Summary (ASCII-only):", styles['Heading2']))
+                story.append(Spacer(1, 0.2*inch))
+                story.append(Paragraph(ascii_summary[:1000] + "...", styles['Normal']))
+            
+            doc.build(story)
+            buffer.seek(0)
+            return buffer.read()
     
     @staticmethod
     async def export_as_text(

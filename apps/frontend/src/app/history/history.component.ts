@@ -1,10 +1,26 @@
-import { Component, OnInit, inject, signal } from '@angular/core';
+import {
+  Component,
+  OnInit,
+  inject,
+  signal,
+  computed,
+  OnDestroy,
+} from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { HttpClient } from '@angular/common/http';
+import { HttpClient, HttpParams } from '@angular/common/http';
 import { Router, RouterModule } from '@angular/router';
+import { FormsModule } from '@angular/forms';
 import { ConfirmationModalComponent } from '../shared/confirmation-modal.component';
 import { ChatStore } from '../chat/chat.store';
-import { ChatService } from '../chat.service';
+import { Subject, debounceTime, distinctUntilChanged, takeUntil } from 'rxjs';
+
+interface Tag {
+  id: string;
+  name: string;
+  slug: string;
+  color?: string;
+  document_count?: number;
+}
 
 interface SummaryItem {
   id: string;
@@ -15,21 +31,117 @@ interface SummaryItem {
   createdAt: string;
   processingTime: number;
   wordCount: number;
+  tags: Tag[];
+}
+
+interface ExportFormat {
+  value: 'markdown' | 'pdf' | 'text';
+  label: string;
+  icon: string;
 }
 
 @Component({
   selector: 'app-history',
   standalone: true,
-  imports: [CommonModule, RouterModule, ConfirmationModalComponent],
+  imports: [
+    CommonModule,
+    RouterModule,
+    FormsModule,
+    ConfirmationModalComponent,
+  ],
   template: `
-    <div class="max-w-7xl mx-auto py-4 sm:py-8 px-4 sm:px-6 lg:px-8 animate-fade-in">
+    <div
+      class="max-w-7xl mx-auto py-4 sm:py-8 px-4 sm:px-6 lg:px-8 animate-fade-in"
+    >
+      <!-- Header -->
       <div class="mb-6 sm:mb-8">
-        <h2 class="text-2xl sm:text-3xl font-bold text-foreground">Summary History</h2>
+        <h2 class="text-2xl sm:text-3xl font-bold text-foreground">
+          Document Library
+        </h2>
         <p class="mt-1 text-sm sm:text-base text-muted-foreground">
-          View and manage your previously generated summaries
+          Search, filter, and manage your PDF summaries
         </p>
       </div>
 
+      <!-- Search and Filters Bar -->
+      <div class="mb-6 space-y-4">
+        <!-- Search Input -->
+        <div class="relative">
+          <svg
+            class="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+              d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+            />
+          </svg>
+          <input
+            type="text"
+            [(ngModel)]="searchQuery"
+            (ngModelChange)="onSearchChange()"
+            placeholder="Search by filename or content..."
+            class="w-full pl-10 pr-4 py-2 bg-background border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+          />
+          @if (searchQuery()) {
+          <button
+            (click)="clearSearch()"
+            class="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+          >
+            <svg
+              class="w-5 h-5"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M6 18L18 6M6 6l12 12"
+              />
+            </svg>
+          </button>
+          }
+        </div>
+
+        <!-- Tag Filters -->
+        @if (availableTags().length > 0) {
+        <div class="flex flex-wrap gap-2">
+          <span class="text-sm text-muted-foreground mr-2"
+            >Filter by tags:</span
+          >
+          @for (tag of availableTags(); track tag.id) {
+          <button
+            (click)="toggleTag(tag.slug)"
+            [class.bg-primary-600]="selectedTags().includes(tag.slug)"
+            [class.text-white]="selectedTags().includes(tag.slug)"
+            [class.bg-muted]="!selectedTags().includes(tag.slug)"
+            [class.text-foreground]="!selectedTags().includes(tag.slug)"
+            class="px-3 py-1 text-sm rounded-full transition-colors"
+          >
+            {{ tag.name }}
+            @if (tag.document_count) {
+            <span class="ml-1 opacity-75">({{ tag.document_count }})</span>
+            }
+          </button>
+          } @if (selectedTags().length > 0) {
+          <button
+            (click)="clearTags()"
+            class="px-3 py-1 text-sm bg-error/10 text-error rounded-full hover:bg-error/20 transition-colors"
+          >
+            Clear all
+          </button>
+          }
+        </div>
+        }
+      </div>
+
+      <!-- Loading State -->
       @if (loading()) {
       <div class="flex justify-center py-12">
         <div class="relative">
@@ -41,7 +153,10 @@ interface SummaryItem {
           ></div>
         </div>
       </div>
-      } @if (!loading() && summaries().length === 0) {
+      }
+
+      <!-- Empty State -->
+      @if (!loading() && filteredSummaries().length === 0) {
       <div class="text-center py-16 glass rounded-2xl">
         <div
           class="inline-flex items-center justify-center w-20 h-20 rounded-full bg-gradient-to-br from-primary-100 to-accent-100 dark:from-primary-900/30 dark:to-accent-900/30 mb-4"
@@ -61,11 +176,14 @@ interface SummaryItem {
           </svg>
         </div>
         <h3 class="text-xl font-semibold text-foreground mb-2">
-          No summaries yet
+          @if (hasFilters()) { No documents match your filters } @else { No
+          documents yet }
         </h3>
         <p class="text-muted-foreground mb-6">
-          Your PDF summaries will appear here once generated
+          @if (hasFilters()) { Try adjusting your search or filters } @else {
+          Your PDF summaries will appear here once generated }
         </p>
+        @if (!hasFilters()) {
         <a
           routerLink="/app/upload"
           class="inline-flex items-center px-6 py-3 bg-gradient-to-r from-primary-600 to-accent-600 hover:from-primary-700 hover:to-accent-700 text-white font-medium rounded-xl shadow-lg hover:shadow-xl transform hover:scale-[1.02] transition-all"
@@ -85,16 +203,18 @@ interface SummaryItem {
           </svg>
           Upload Your First PDF
         </a>
+        }
       </div>
       }
 
-      <div class="grid gap-4 md:gap-6">
-        @for (item of summaries(); track item.id) {
+      <!-- Document Grid -->
+      <div class="grid gap-4 md:gap-6 relative">
+        @for (item of filteredSummaries(); track item.id) {
         <div
-          class="glass rounded-xl p-4 sm:p-6 hover:shadow-xl transition-all duration-300 hover:scale-[1.01] group animate-slide-up"
-          [style.animation-delay.ms]="summaries().indexOf(item) * 50"
+          class="glass rounded-xl p-4 sm:p-6 hover:shadow-xl transition-all duration-300 hover:scale-[1.01] group animate-slide-up relative overflow-visible"
+          [style.animation-delay.ms]="filteredSummaries().indexOf(item) * 50"
         >
-          <div class="relative">
+          <div class="relative z-0">
             <div class="flex items-start gap-3">
               <div class="flex-shrink-0">
                 <div
@@ -117,131 +237,203 @@ interface SummaryItem {
               </div>
               <div class="flex-1 min-w-0">
                 <div class="mb-2">
-                  <h3 class="text-base sm:text-lg font-semibold text-foreground break-words pr-8 sm:pr-2">
+                  <h3
+                    class="text-base sm:text-lg font-semibold text-foreground break-words pr-8 sm:pr-2"
+                  >
                     {{ item.fileName }}
                   </h3>
                 </div>
+
+                <!-- Tags -->
+                @if (item.tags && item.tags.length > 0) {
+                <div class="flex flex-wrap gap-1.5 mb-3">
+                  @for (tag of item.tags; track tag.id) {
+                  <span
+                    [style.background-color]="tag.color || '#6B7280'"
+                    class="px-2 py-0.5 text-xs text-white rounded-full opacity-90"
+                  >
+                    {{ tag.name }}
+                  </span>
+                  }
+                </div>
+                }
+
+                <!-- Metadata -->
                 <div
                   class="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs sm:text-sm text-muted-foreground mb-3"
                 >
-                <span class="inline-flex items-center">
-                  <svg
-                    class="w-4 h-4 mr-1 opacity-60"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
+                  <span class="inline-flex items-center">
+                    <svg
+                      class="w-4 h-4 mr-1 opacity-60"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        stroke-width="2"
+                        d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"
+                      />
+                    </svg>
+                    {{ formatFileSize(item.fileSize) }}
+                  </span>
+                  <span class="hidden sm:inline text-border">•</span>
+                  <span class="inline-flex items-center">
+                    <svg
+                      class="w-4 h-4 mr-1 opacity-60"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        stroke-width="2"
+                        d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                      />
+                    </svg>
+                    {{ item.wordCount }} words
+                  </span>
+                  <span class="hidden sm:inline text-border">•</span>
+                  <span class="inline-flex items-center">
+                    <svg
+                      class="w-4 h-4 mr-1 opacity-60"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        stroke-width="2"
+                        d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
+                      />
+                    </svg>
+                    {{ formatDate(item.createdAt) }}
+                  </span>
+                  @if (item.processingTime) {
+                  <span class="hidden sm:inline text-border">•</span>
+                  <span
+                    class="inline-flex items-center text-accent-600 dark:text-accent-400"
                   >
-                    <path
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                      stroke-width="2"
-                      d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"
-                    />
-                  </svg>
-                  {{ formatFileSize(item.fileSize) }}
-                </span>
-                <span class="hidden sm:inline text-border">•</span>
-                <span class="inline-flex items-center">
-                  <svg
-                    class="w-4 h-4 mr-1 opacity-60"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                      stroke-width="2"
-                      d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
-                    />
-                  </svg>
-                  {{ item.wordCount }} words
-                </span>
-                <span class="hidden sm:inline text-border">•</span>
-                <span class="inline-flex items-center">
-                  <svg
-                    class="w-4 h-4 mr-1 opacity-60"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                      stroke-width="2"
-                      d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
-                    />
-                  </svg>
-                  {{ formatDate(item.createdAt) }}
-                </span>
-                @if (item.processingTime) {
-                <span class="hidden sm:inline text-border">•</span>
-                <span
-                  class="inline-flex items-center text-accent-600 dark:text-accent-400"
+                    <svg
+                      class="w-4 h-4 mr-1"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        stroke-width="2"
+                        d="M13 10V3L4 14h7v7l9-11h-7z"
+                      />
+                    </svg>
+                    {{ item.processingTime }}s
+                  </span>
+                  }
+                </div>
+
+                <!-- Summary Preview -->
+                <p
+                  class="text-sm sm:text-base text-foreground/80 line-clamp-2 sm:line-clamp-3 leading-relaxed mb-3"
                 >
-                  <svg
-                    class="w-4 h-4 mr-1"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                      stroke-width="2"
-                      d="M13 10V3L4 14h7v7l9-11h-7z"
-                    />
-                  </svg>
-                  {{ item.processingTime }}s
-                </span>
-                }
-              </div>
-                <p class="text-sm sm:text-base text-foreground/80 line-clamp-2 sm:line-clamp-3 leading-relaxed mb-3">
                   {{ item.summary }}
                 </p>
-                <div class="flex items-center justify-between gap-3">
-                  <button
-                    (click)="viewFullSummary(item)"
-                    class="text-xs sm:text-sm font-medium text-primary-600 dark:text-primary-400 hover:text-primary-700 dark:hover:text-primary-300 inline-flex items-center group/btn"
-                  >
-                    Read more
-                    <svg
-                      class="w-3 h-3 sm:w-4 sm:h-4 ml-1 transform group-hover/btn:translate-x-1 transition-transform"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
+
+                <!-- Actions -->
+                <div class="flex items-center justify-between gap-3 flex-wrap">
+                  <div class="flex items-center gap-2">
+                    <button
+                      (click)="viewFullSummary(item)"
+                      class="text-xs sm:text-sm font-medium text-primary-600 dark:text-primary-400 hover:text-primary-700 dark:hover:text-primary-300 inline-flex items-center group/btn"
                     >
-                      <path
-                        stroke-linecap="round"
-                        stroke-linejoin="round"
-                        stroke-width="2"
-                        d="M9 5l7 7-7 7"
-                      />
-                    </svg>
-                  </button>
-                  <button
-                    (click)="startChat(item.document_id)"
-                    class="text-xs sm:text-sm font-medium text-accent-600 dark:text-accent-400 hover:text-accent-700 dark:hover:text-accent-300 inline-flex items-center group/btn"
-                  >
-                    <svg
-                      class="w-3 h-3 sm:w-4 sm:h-4 mr-1"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
+                      Read more
+                      <svg
+                        class="w-3 h-3 sm:w-4 sm:h-4 ml-1 transform group-hover/btn:translate-x-1 transition-transform"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          stroke-linecap="round"
+                          stroke-linejoin="round"
+                          stroke-width="2"
+                          d="M9 5l7 7-7 7"
+                        />
+                      </svg>
+                    </button>
+                    <button
+                      (click)="startChat(item.document_id)"
+                      class="text-xs sm:text-sm font-medium text-accent-600 dark:text-accent-400 hover:text-accent-700 dark:hover:text-accent-300 inline-flex items-center group/btn"
                     >
-                      <path
-                        stroke-linecap="round"
-                        stroke-linejoin="round"
-                        stroke-width="2"
-                        d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
-                      />
-                    </svg>
-                    Chat
-                  </button>
+                      <svg
+                        class="w-3 h-3 sm:w-4 sm:h-4 mr-1"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          stroke-linecap="round"
+                          stroke-linejoin="round"
+                          stroke-width="2"
+                          d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
+                        />
+                      </svg>
+                      Chat
+                    </button>
+                  </div>
+                  <div class="flex items-center gap-1">
+                    <!-- Export as Markdown -->
+                    <button
+                      (click)="exportSummary(item.id, 'markdown')"
+                      class="p-1.5 text-muted-foreground hover:text-foreground hover:bg-muted/50 rounded transition-colors"
+                      title="Export as Markdown"
+                    >
+                      <i class="fab fa-markdown text-sm"></i>
+                    </button>
+                    <!-- Export as PDF -->
+                    <button
+                      (click)="exportSummary(item.id, 'pdf')"
+                      class="p-1.5 text-muted-foreground hover:text-foreground hover:bg-muted/50 rounded transition-colors"
+                      title="Export as PDF"
+                    >
+                      <i class="far fa-file-pdf text-sm"></i>
+                    </button>
+                    <!-- Export as Text -->
+                    <button
+                      (click)="exportSummary(item.id, 'text')"
+                      class="p-1.5 text-muted-foreground hover:text-foreground hover:bg-muted/50 rounded transition-colors"
+                      title="Export as Text"
+                    >
+                      <i class="far fa-file-alt text-sm"></i>
+                    </button>
+                    <!-- Download Original -->
+                    <button
+                      (click)="downloadOriginal(item.document_id)"
+                      class="p-1.5 text-muted-foreground hover:text-foreground hover:bg-muted/50 rounded transition-colors"
+                      title="Download original PDF"
+                    >
+                      <svg
+                        class="w-4 h-4"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          stroke-linecap="round"
+                          stroke-linejoin="round"
+                          stroke-width="2"
+                          d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M9 19l3 3m0 0l3-3m-3 3V10"
+                        />
+                      </svg>
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
-            <!-- Mobile delete button -->
+            <!-- Delete button -->
             <button
               (click)="confirmDelete(item.id)"
               class="absolute top-2 right-2 sm:opacity-0 sm:group-hover:opacity-100 p-2 text-muted-foreground hover:text-error hover:bg-error/10 rounded-lg transition-all"
@@ -266,6 +458,7 @@ interface SummaryItem {
         }
       </div>
 
+      <!-- Full Summary Modal -->
       @if (showModal() && selectedSummary()) {
       <div
         class="fixed inset-0 z-50 overflow-y-auto"
@@ -350,6 +543,21 @@ interface SummaryItem {
                 </button>
               </div>
 
+              <!-- Tags in Modal -->
+              @if (selectedSummary()!.tags && selectedSummary()!.tags.length >
+              0) {
+              <div class="flex flex-wrap gap-1.5 mb-4">
+                @for (tag of selectedSummary()!.tags; track tag.id) {
+                <span
+                  [style.background-color]="tag.color || '#6B7280'"
+                  class="px-2 py-0.5 text-xs text-white rounded-full opacity-90"
+                >
+                  {{ tag.name }}
+                </span>
+                }
+              </div>
+              }
+
               <div class="prose prose-gray dark:prose-invert max-w-none">
                 <div
                   class="text-sm sm:text-base text-foreground/90 leading-relaxed whitespace-pre-wrap max-h-[60vh] overflow-y-auto"
@@ -402,11 +610,13 @@ interface SummaryItem {
   `,
   styles: [],
 })
-export class HistoryComponent implements OnInit {
+export class HistoryComponent implements OnInit, OnDestroy {
   private http = inject(HttpClient);
   private router = inject(Router);
   private chatStore = inject(ChatStore);
-  private chatService = inject(ChatService);
+
+  private destroy$ = new Subject<void>();
+  private searchSubject$ = new Subject<string>();
 
   summaries = signal<SummaryItem[]>([]);
   loading = signal(true);
@@ -415,13 +625,94 @@ export class HistoryComponent implements OnInit {
   showDeleteConfirm = signal(false);
   deleteTargetId = signal<string | null>(null);
 
+  // Search and filter signals
+  searchQuery = signal('');
+  selectedTags = signal<string[]>([]);
+  availableTags = signal<Tag[]>([]);
+
+  // Export formats
+  exportFormats: ExportFormat[] = [
+    {
+      value: 'markdown',
+      label: 'Markdown',
+      icon: '<i class="fa-brands fa-markdown"></i>',
+    },
+    {
+      value: 'pdf',
+      label: 'PDF',
+      icon: '<i class="fa-solid fa-file-pdf"></i>',
+    },
+    {
+      value: 'text',
+      label: 'Plain Text',
+      icon: '<i class="fa-solid fa-file-lines"></i>',
+    },
+  ];
+
+  // Computed signal for filtered summaries
+  filteredSummaries = computed(() => {
+    const search = this.searchQuery().toLowerCase();
+    const tags = this.selectedTags();
+    let filtered = this.summaries();
+
+    // Apply search filter
+    if (search) {
+      filtered = filtered.filter(
+        (item) =>
+          item.fileName.toLowerCase().includes(search) ||
+          item.summary.toLowerCase().includes(search)
+      );
+    }
+
+    // Apply tag filter
+    if (tags.length > 0) {
+      filtered = filtered.filter(
+        (item) => item.tags && item.tags.some((tag) => tags.includes(tag.slug))
+      );
+    }
+
+    return filtered;
+  });
+
+  hasFilters = computed(() => {
+    return this.searchQuery().length > 0 || this.selectedTags().length > 0;
+  });
+
   ngOnInit() {
     this.loadHistory();
+    this.loadTags();
+
+    // Set up search with debounce and distinctUntilChanged
+    this.searchSubject$
+      .pipe(debounceTime(300), distinctUntilChanged(), takeUntil(this.destroy$))
+      .subscribe((searchTerm) => {
+        this.searchQuery.set(searchTerm);
+        this.loadHistory();
+      });
+  }
+
+  ngOnDestroy() {
+    this.destroy$.next();
+    this.destroy$.complete();
   }
 
   loadHistory() {
     this.loading.set(true);
-    this.http.get<SummaryItem[]>('/api/v1/pdf/history').subscribe({
+
+    // Build query params
+    let params = new HttpParams();
+    const search = this.searchQuery();
+    const tags = this.selectedTags();
+
+    if (search) {
+      params = params.set('search', search);
+    }
+
+    tags.forEach((tag) => {
+      params = params.append('tags', tag);
+    });
+
+    this.http.get<SummaryItem[]>('/api/v1/pdf/library', { params }).subscribe({
       next: (data) => {
         this.summaries.set(data);
         this.loading.set(false);
@@ -430,6 +721,127 @@ export class HistoryComponent implements OnInit {
         this.loading.set(false);
       },
     });
+  }
+
+  loadTags() {
+    this.http.get<Tag[]>('/api/v1/pdf/tags').subscribe({
+      next: (tags) => {
+        this.availableTags.set(tags);
+      },
+    });
+  }
+
+  onSearchChange() {
+    // Use RxJS subject for proper debounce and distinctUntilChanged
+    this.searchSubject$.next(this.searchQuery());
+  }
+
+  clearSearch() {
+    this.searchQuery.set('');
+    this.loadHistory();
+  }
+
+  toggleTag(tagSlug: string) {
+    const currentTags = this.selectedTags();
+    if (currentTags.includes(tagSlug)) {
+      this.selectedTags.set(currentTags.filter((t) => t !== tagSlug));
+    } else {
+      this.selectedTags.set([...currentTags, tagSlug]);
+    }
+    this.loadHistory();
+  }
+
+  clearTags() {
+    this.selectedTags.set([]);
+    this.loadHistory();
+  }
+
+  exportSummary(summaryId: string, format: 'markdown' | 'pdf' | 'text') {
+    // Use HttpClient to properly handle authentication
+    this.http
+      .get(`/api/v1/pdf/export/${summaryId}?format=${format}`, {
+        responseType: 'blob',
+      })
+      .subscribe({
+        next: (blob) => {
+          // Create a download link
+          const url = window.URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = `summary.${format}`;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          window.URL.revokeObjectURL(url);
+        },
+        error: (err) => {
+          console.error('Failed to export summary:', err);
+        },
+      });
+  }
+
+  downloadOriginal(documentId: string) {
+    // First, try to get the download info
+    this.http
+      .get<{ download_url?: string; filename?: string }>(`/api/v1/storage/download/${documentId}`)
+      .subscribe({
+        next: (response) => {
+          if (response.download_url) {
+            // S3 storage: we got a presigned URL with Content-Disposition header
+            // This will trigger a download instead of opening in browser
+            window.location.href = response.download_url;
+          } else {
+            // Local storage: fall back to blob download
+            this.downloadLocalFile(documentId);
+          }
+        },
+        error: (err) => {
+          // If the response is not JSON, it might be a blob (local storage)
+          if (err.status === 200 || err.error instanceof Blob) {
+            this.downloadLocalFile(documentId);
+          } else {
+            console.error('Failed to download document:', err);
+          }
+        },
+      });
+  }
+
+  private downloadLocalFile(documentId: string) {
+    // Download file as blob for local storage
+    this.http
+      .get(`/api/v1/storage/download/${documentId}`, {
+        responseType: 'blob',
+        observe: 'response',
+      })
+      .subscribe({
+        next: (response) => {
+          if (response.body) {
+            const blob = response.body;
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            
+            // Extract filename from content-disposition header if available
+            const contentDisposition = response.headers.get('content-disposition');
+            let filename = 'document.pdf';
+            if (contentDisposition) {
+              const filenameMatch = contentDisposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
+              if (filenameMatch && filenameMatch[1]) {
+                filename = filenameMatch[1].replace(/['"]/g, '');
+              }
+            }
+            
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            window.URL.revokeObjectURL(url);
+          }
+        },
+        error: (err) => {
+          console.error('Failed to download document:', err);
+        },
+      });
   }
 
   confirmDelete(id: string) {
@@ -446,6 +858,8 @@ export class HistoryComponent implements OnInit {
             items.filter((item) => item.id !== id)
           );
           this.cancelDelete();
+          // Reload tags as counts may have changed
+          this.loadTags();
         },
       });
     }
@@ -498,21 +912,23 @@ export class HistoryComponent implements OnInit {
     this.showModal.set(false);
     this.selectedSummary.set(null);
   }
-  
+
   startChat(documentId: string) {
     // Find the document info
-    const doc = this.summaries().find(s => s.document_id === documentId);
+    const doc = this.summaries().find((s) => s.document_id === documentId);
     if (!doc) return;
-    
+
     // Create a new chat session
-    this.chatStore.createChatSession(documentId, `Chat with ${doc.fileName}`).subscribe({
-      next: (chat) => {
-        // Navigate to chat view
-        this.router.navigate(['/app/chat', chat.id]);
-      },
-      error: (err) => {
-        console.error('Failed to create chat session:', err);
-      }
-    });
+    this.chatStore
+      .createChatSession(documentId, `Chat with ${doc.fileName}`)
+      .subscribe({
+        next: (chat) => {
+          // Navigate to chat view
+          this.router.navigate(['/app/chat', chat.id]);
+        },
+        error: (err) => {
+          console.error('Failed to create chat session:', err);
+        },
+      });
   }
 }

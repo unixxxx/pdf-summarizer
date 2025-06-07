@@ -149,3 +149,5 @@ The application requires OAuth configuration:
 - Always use TailwindCSS 4 when working with styles or design related files
 - don't add coauthor to the commit messages
 - Always aim for production grade quality
+- don't run the app, ask me to do it whenever necessary
+- Always ask for structured outputs when using LLMs and provide appropriate pydantic schemas

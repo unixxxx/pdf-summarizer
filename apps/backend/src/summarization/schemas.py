@@ -67,6 +67,46 @@ class TextSummaryResponse(BaseSchema):
     }
 
 
+class TagGenerationResponse(BaseSchema):
+    """Schema for structured tag generation from LLM."""
+    
+    tags: list[str] = Field(
+        ...,
+        min_items=3,
+        max_items=8,
+        description="List of relevant tags for the document. Tags should be lowercase, use hyphens for multi-word tags (e.g., 'machine-learning'), and be relevant to the content."
+    )
+    
+    @field_validator('tags')
+    @classmethod
+    def validate_tags(cls, v: list[str]) -> list[str]:
+        """Validate and clean tags."""
+        cleaned_tags = []
+        for tag in v:
+            # Convert to lowercase and replace spaces with hyphens
+            tag = tag.lower().strip().replace(' ', '-')
+            # Remove any non-alphanumeric characters except hyphens
+            tag = ''.join(c for c in tag if c.isalnum() or c == '-')
+            # Remove multiple consecutive hyphens
+            while '--' in tag:
+                tag = tag.replace('--', '-')
+            # Remove leading/trailing hyphens
+            tag = tag.strip('-')
+            
+            # Only add if valid
+            if tag and 1 < len(tag) <= 50 and tag not in cleaned_tags:
+                cleaned_tags.append(tag)
+        
+        return cleaned_tags[:8]  # Ensure max 8 tags
+    
+    model_config = BaseSchema.model_config.copy()
+    model_config["json_schema_extra"] = {
+        "example": {
+            "tags": ["machine-learning", "python", "data-science", "tutorial", "neural-networks"]
+        }
+    }
+
+
 class SummaryStats(BaseSchema):
     """Statistics about a generated summary."""
 

@@ -1,12 +1,14 @@
 import hashlib
+import random
 import time
 
 from fastapi import APIRouter, Depends
+from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..auth.dependencies import CurrentUser
 from ..common.exceptions import EmptyContentError
-from ..database.models import Document, Summary
+from ..database.models import Document, Summary, Tag
 from ..database.session import get_db
 from ..embeddings.dependencies import EmbeddingsServiceDep
 from ..storage.dependencies import StorageServiceDep
@@ -45,14 +47,15 @@ async def summarize_text(
     if not request.text.strip():
         raise EmptyContentError("text input")
 
-    # Generate summary
-    summary = await summarizer.summarize_text(
+    # Generate summary with tags using the same method as PDF
+    summary_result = await summarizer.summarize_pdf(
         request.text, request.max_length, request.format, request.instructions
     )
 
-    # Calculate statistics
-    original_words = len(request.text.split())
-    summary_words = len(summary.split())
+    # Extract summary and stats
+    summary = summary_result["summary"]
+    
+    # Calculate processing time
     processing_time = time.time() - start_time
     
     # Create a hash of the text content for deduplication
@@ -87,6 +90,79 @@ async def summarize_text(
         text=request.text,
         db=db,
     )
+    
+    # Process and create tags (same logic as PDF endpoint)
+    generated_tags = summary_result.get("tags", [])
+    print(f"DEBUG: Text summarization generated {len(generated_tags)} tags: {generated_tags}")
+    
+    if generated_tags:
+        for tag_name in generated_tags:
+            if not tag_name:
+                continue
+                
+            # Ensure tag name is not too long (max 100 chars in DB)
+            tag_name = tag_name[:50] if len(tag_name) > 50 else tag_name
+            
+            # Create slug from tag name
+            slug = tag_name.lower().strip().replace(' ', '-')
+            slug = slug[:50] if len(slug) > 50 else slug
+            
+            # Check if tag already exists
+            existing_tag = await db.execute(
+                select(Tag).where(Tag.slug == slug)
+            )
+            tag = existing_tag.scalar_one_or_none()
+            
+            if not tag:
+                # Generate a random color for the tag
+                colors = [
+                    "#3B82F6",  # Blue
+                    "#10B981",  # Green
+                    "#F59E0B",  # Yellow
+                    "#EF4444",  # Red
+                    "#8B5CF6",  # Purple
+                    "#EC4899",  # Pink
+                    "#14B8A6",  # Teal
+                    "#F97316",  # Orange
+                    "#6366F1",  # Indigo
+                    "#84CC16",  # Lime
+                ]
+                color = random.choice(colors)
+                
+                # Create new tag
+                tag = Tag(
+                    name=tag_name,
+                    slug=slug,
+                    color=color,
+                )
+                db.add(tag)
+                await db.flush()
+            
+            # Add tag to document using explicit query to avoid lazy loading
+            # Check if this tag is already associated with the document
+            from ..database.models import document_tags
+            existing_association = await db.execute(
+                select(document_tags).where(
+                    document_tags.c.document_id == document.id,
+                    document_tags.c.tag_id == tag.id
+                )
+            )
+            if not existing_association.first():
+                # Create the association
+                await db.execute(
+                    document_tags.insert().values(
+                        document_id=document.id,
+                        tag_id=tag.id
+                    )
+                )
+        
+        # Flush to ensure the many-to-many relationships are saved
+        await db.flush()
+        print(f"DEBUG: Added {len(generated_tags)} tags to text document {document.id}")
+    
+    # Get stats from the result
+    original_words = summary_result["stats"].get("original_words", len(request.text.split()))
+    summary_words = summary_result["stats"].get("summary_words", len(summary.split()))
     
     # Create summary record
     summary_record = Summary(

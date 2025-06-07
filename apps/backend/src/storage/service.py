@@ -1,6 +1,5 @@
 """Storage service for handling file uploads to S3 or local storage."""
 
-import os
 import uuid
 from pathlib import Path
 from typing import Optional, Tuple
@@ -74,7 +73,7 @@ class StorageService:
                         Body=content,
                         ContentType=self._get_content_type(extension),
                         Metadata={
-                            'original_filename': original_filename or '',
+                            'original_filename': self._safe_ascii_encode(original_filename or ''),
                             'user_id': user_id,
                         }
                     )
@@ -174,13 +173,14 @@ class StorageService:
             except IOError as e:
                 raise StorageError(f"Failed to delete file locally: {str(e)}")
     
-    async def get_file_url(self, storage_key: str, expires_in: int = 3600) -> str:
+    async def get_file_url(self, storage_key: str, expires_in: int = 3600, filename: Optional[str] = None) -> str:
         """
         Get a presigned URL for file access (S3 only).
         
         Args:
             storage_key: Storage path/key for the file
             expires_in: URL expiration time in seconds
+            filename: Optional filename for Content-Disposition header
             
         Returns:
             Presigned URL for S3, or local path for local storage
@@ -194,12 +194,18 @@ class StorageService:
                     's3',
                     endpoint_url=self.settings.s3_endpoint_url
                 ) as s3_client:
+                    params = {
+                        'Bucket': self.settings.s3_bucket_name,
+                        'Key': storage_key
+                    }
+                    
+                    # Add Content-Disposition header to force download
+                    if filename:
+                        params['ResponseContentDisposition'] = f'attachment; filename="{filename}"'
+                    
                     url = await s3_client.generate_presigned_url(
                         'get_object',
-                        Params={
-                            'Bucket': self.settings.s3_bucket_name,
-                            'Key': storage_key
-                        },
+                        Params=params,
                         ExpiresIn=expires_in
                     )
                     return url
@@ -218,6 +224,21 @@ class StorageService:
             'bin': 'application/octet-stream',
         }
         return content_types.get(extension, 'application/octet-stream')
+    
+    def _safe_ascii_encode(self, text: str) -> str:
+        """
+        Safely encode text to ASCII for S3 metadata.
+        Non-ASCII characters are encoded using Unicode escape sequences.
+        """
+        if not text:
+            return ''
+        
+        # Use unicode-escape encoding and then decode to get ASCII-safe string
+        # This converts non-ASCII characters to \\uXXXX format
+        encoded = text.encode('unicode-escape').decode('ascii')
+        
+        # Limit length to ensure it fits in S3 metadata (max 2KB)
+        return encoded[:1024]
     
     async def store_text_as_file(
         self,
