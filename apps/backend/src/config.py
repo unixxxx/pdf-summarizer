@@ -1,13 +1,15 @@
+import os
 import secrets
 from functools import lru_cache
 from typing import List, Optional, Union
 
-from pydantic import Field, validator
-from pydantic_settings import BaseSettings
+from pydantic import Field, field_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
     """Application settings loaded from environment variables."""
+    
 
     # API Configuration
     api_title: str = "PDF Summarizer API"
@@ -123,15 +125,33 @@ class Settings(BaseSettings):
     
     # S3 Configuration
     s3_bucket_name: Optional[str] = Field(default=None, env="S3_BUCKET_NAME")
-    s3_region: str = Field(default="us-east-1", env="AWS_DEFAULT_REGION")
-    s3_access_key_id: Optional[str] = Field(default=None, env="AWS_ACCESS_KEY_ID")
-    s3_secret_access_key: Optional[str] = Field(default=None, env="AWS_SECRET_ACCESS_KEY")
+    aws_default_region: str = Field(default="us-east-1", env="AWS_DEFAULT_REGION")
+    aws_access_key_id: Optional[str] = Field(default=None, env="AWS_ACCESS_KEY_ID")
+    aws_secret_access_key: Optional[str] = Field(default=None, env="AWS_SECRET_ACCESS_KEY")
     s3_endpoint_url: Optional[str] = Field(default=None, env="S3_ENDPOINT_URL")  # For S3-compatible services
+    
+    # Aliases for backward compatibility
+    @property
+    def s3_region(self) -> str:
+        """Alias for aws_default_region for backward compatibility."""
+        return self.aws_default_region
+    
+    @property
+    def s3_access_key_id(self) -> Optional[str]:
+        """Alias for aws_access_key_id for backward compatibility."""
+        return self.aws_access_key_id
+    
+    @property
+    def s3_secret_access_key(self) -> Optional[str]:
+        """Alias for aws_secret_access_key for backward compatibility."""
+        return self.aws_secret_access_key
 
-    class Config:
-        env_file = ".env"
-        env_file_encoding = "utf-8"
-        case_sensitive = False
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=False,
+        extra="ignore"
+    )
 
     @property
     def max_pdf_size_bytes(self) -> int:
@@ -150,7 +170,8 @@ class Settings(BaseSettings):
             return [self.frontend_url]
         return ["*"]  # Allow all origins in development
 
-    @validator("allowed_redirect_urls")
+    @field_validator("allowed_redirect_urls", mode="before")
+    @classmethod
     def parse_allowed_redirect_urls(cls, v):
         """Parse allowed redirect URLs from environment variable."""
         if isinstance(v, str):
@@ -186,8 +207,8 @@ class Settings(BaseSettings):
         return (
             self.storage_backend == "s3" 
             and bool(self.s3_bucket_name)
-            and bool(self.s3_access_key_id)
-            and bool(self.s3_secret_access_key)
+            and bool(self.aws_access_key_id)
+            and bool(self.aws_secret_access_key)
         )
 
 
