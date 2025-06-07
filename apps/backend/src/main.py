@@ -14,6 +14,7 @@ from .config import get_settings
 from .chat.router import router as chat_router
 from .health.router import router as health_router
 from .pdf.router import router as pdf_router
+from .storage.router import router as storage_router
 from .summarization.router import router as summarization_router
 
 # Configure logging
@@ -57,6 +58,12 @@ async def lifespan(app: FastAPI):
         logger.info("GitHub OAuth configured successfully")
     else:
         logger.warning("GitHub OAuth not configured")
+    
+    # Check storage configuration
+    if settings.s3_enabled:
+        logger.info(f"S3 storage enabled with bucket: {settings.s3_bucket_name}")
+    else:
+        logger.info(f"Local file storage enabled at: {settings.storage_local_path}")
 
     yield
 
@@ -93,6 +100,7 @@ def create_app() -> FastAPI:
     app.include_router(pdf_router, prefix="/api/v1")
     app.include_router(summarization_router, prefix="/api/v1")
     app.include_router(chat_router, prefix="/api/v1")
+    app.include_router(storage_router, prefix="/api/v1")
 
     # Global exception handler
     @app.exception_handler(PDFSummarizerException)

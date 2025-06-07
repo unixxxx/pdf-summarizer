@@ -9,6 +9,7 @@ from ..common.exceptions import EmptyContentError
 from ..database.models import Document, Summary
 from ..database.session import get_db
 from ..embeddings.dependencies import EmbeddingsServiceDep
+from ..storage.dependencies import StorageServiceDep
 from .dependencies import SummarizerServiceDep
 from .schemas import TextSummaryRequest, TextSummaryResponse
 
@@ -33,6 +34,7 @@ async def summarize_text(
     request: TextSummaryRequest,
     summarizer: SummarizerServiceDep,
     embeddings_service: EmbeddingsServiceDep,
+    storage_service: StorageServiceDep,
     current_user: CurrentUser,
     db: AsyncSession = Depends(get_db),
 ) -> TextSummaryResponse:
@@ -61,13 +63,20 @@ async def summarize_text(
     preview = request.text[:50] + "..." if len(request.text) > 50 else request.text
     filename = f"Text: {preview}"
     
+    # Store text as a file
+    storage_path, file_size = await storage_service.store_text_as_file(
+        text=request.text,
+        user_id=str(current_user.id),
+        title=preview,
+    )
+    
     document = Document(
         user_id=current_user.id,
         filename=filename,
-        file_size=len(request.text.encode()),
+        file_size=file_size,
         file_hash=text_hash,
         page_count=1,  # Text input is considered 1 page
-        storage_path=None,  # No file storage for text input
+        storage_path=storage_path,
     )
     db.add(document)
     await db.flush()

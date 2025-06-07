@@ -116,6 +116,17 @@ class Settings(BaseSettings):
         default="http://localhost:4200,http://localhost:8000",
         env="ALLOWED_REDIRECT_URLS",
     )
+    
+    # Storage Configuration
+    storage_backend: str = Field(default="local", env="STORAGE_BACKEND")  # "local" or "s3"
+    storage_local_path: str = Field(default="./storage", env="STORAGE_LOCAL_PATH")
+    
+    # S3 Configuration
+    s3_bucket_name: Optional[str] = Field(default=None, env="S3_BUCKET_NAME")
+    s3_region: str = Field(default="us-east-1", env="AWS_DEFAULT_REGION")
+    s3_access_key_id: Optional[str] = Field(default=None, env="AWS_ACCESS_KEY_ID")
+    s3_secret_access_key: Optional[str] = Field(default=None, env="AWS_SECRET_ACCESS_KEY")
+    s3_endpoint_url: Optional[str] = Field(default=None, env="S3_ENDPOINT_URL")  # For S3-compatible services
 
     class Config:
         env_file = ".env"
@@ -168,6 +179,16 @@ class Settings(BaseSettings):
     def github_oauth_enabled(self) -> bool:
         """Check if GitHub OAuth is configured."""
         return bool(self.github_client_id and self.github_client_secret)
+    
+    @property
+    def s3_enabled(self) -> bool:
+        """Check if S3 storage is configured."""
+        return (
+            self.storage_backend == "s3" 
+            and bool(self.s3_bucket_name)
+            and bool(self.s3_access_key_id)
+            and bool(self.s3_secret_access_key)
+        )
 
 
 @lru_cache

@@ -120,3 +120,6 @@ htmlcov/
 reports/
 apps/backend/reports/
 apps/backend/coverage/
+
+# Local file storage
+apps/backend/storage/

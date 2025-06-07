@@ -11,6 +11,7 @@ from ..auth.dependencies import CurrentUser
 from ..database.models import Document, Summary
 from ..database.session import get_db
 from ..embeddings.dependencies import EmbeddingsServiceDep
+from ..storage.dependencies import StorageServiceDep
 from ..summarization.dependencies import SummarizerServiceDep
 from .dependencies import PDFServiceDep, ValidatedPDFFile
 from .schemas import (
@@ -71,6 +72,7 @@ async def summarize_pdf(
     pdf_service: PDFServiceDep,
     summarizer: SummarizerServiceDep,
     embeddings_service: EmbeddingsServiceDep,
+    storage_service: StorageServiceDep,
     current_user: CurrentUser,
     db: AsyncSession = Depends(get_db),
     max_length: Annotated[
@@ -128,13 +130,21 @@ async def summarize_pdf(
 
     # Create document if it doesn't exist
     if not document:
+        # Store the PDF file
+        storage_path = await storage_service.store_file(
+            content=pdf_content,
+            user_id=str(current_user.id),
+            file_type='pdf',
+            original_filename=file.filename,
+        )
+        
         document = Document(
             user_id=current_user.id,
             filename=file.filename,
             file_size=len(pdf_content),
             file_hash=file_hash,
             page_count=metadata.pages if metadata else None,
-            storage_path=f"pdfs/{current_user.id}/{file_hash}.pdf",  # TODO: Implement actual file storage
+            storage_path=storage_path,
         )
         db.add(document)
         await db.flush()
@@ -224,6 +234,7 @@ async def get_pdf_history(
 )
 async def delete_pdf_summary(
     summary_id: UUID,
+    storage_service: StorageServiceDep,
     current_user: CurrentUser,
     db: AsyncSession = Depends(get_db),
 ) -> dict:
@@ -243,6 +254,14 @@ async def delete_pdf_summary(
         raise HTTPException(status_code=404, detail="Summary not found")
     
     summary, document = row
+
+    # Delete the file from storage if it exists
+    if document.storage_path:
+        try:
+            await storage_service.delete_file(document.storage_path)
+        except Exception as e:
+            # Log error but don't fail the deletion
+            print(f"Failed to delete file from storage: {e}")
 
     # Delete the document (this will cascade delete summaries, chunks, and chats)
     await db.delete(document)

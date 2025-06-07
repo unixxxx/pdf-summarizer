@@ -45,6 +45,8 @@ dependencies = [
   "pgvector>=0.3.0",
   "langchain-postgres>=0.0.12",
   "greenlet>=3.0.0",
+  "boto3>=1.34.0",
+  "aioboto3>=13.0.0",
 ]
 
 [tool.hatch.build.targets.wheel]

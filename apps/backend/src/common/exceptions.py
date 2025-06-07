@@ -101,3 +101,13 @@ class NotFoundError(PDFSummarizerException):
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"{resource} not found",
         )
+
+
+class StorageError(PDFSummarizerException):
+    """Raised when storage operations fail."""
+
+    def __init__(self, detail: str):
+        super().__init__(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Storage error: {detail}",
+        )
