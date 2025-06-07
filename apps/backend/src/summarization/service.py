@@ -279,6 +279,9 @@ class SummarizerService:
         """
         # Generate summary
         summary = await self.summarize_text(pdf_text, max_length, format, instructions)
+        
+        # Generate tags for the document
+        tags = await self.generate_tags(pdf_text, summary)
 
         # Calculate statistics
         text_chunks = self.text_splitter.split_text(pdf_text)
@@ -296,7 +299,59 @@ class SummarizerService:
             "chunk_count": len(text_chunks),
         }
 
-        return {"summary": summary, "stats": stats}
+        return {"summary": summary, "stats": stats, "tags": tags}
+    
+    async def generate_tags(self, text: str, summary: str) -> list[str]:
+        """
+        Generate relevant tags for a document based on its content.
+        
+        Args:
+            text: Full document text
+            summary: Document summary
+            
+        Returns:
+            List of generated tags
+        """
+        try:
+            # Use the summary and first part of text for tag generation
+            # to avoid sending too much text to the LLM
+            text_sample = text[:2000] if len(text) > 2000 else text
+            
+            prompt = f"""Based on the following document summary and text sample, generate 3-8 relevant tags that categorize this document.
+
+Summary:
+{summary}
+
+Text sample:
+{text_sample}
+
+Guidelines for tags:
+- Tags should be single words or short phrases (2-3 words max)
+- Use lowercase letters only
+- Separate multi-word tags with hyphens (e.g., "machine-learning")
+- Be specific and relevant to the content
+- Include both broad categories and specific topics
+- Examples: technology, finance, machine-learning, startup, research, tutorial, api-documentation
+
+Return only the tags as a comma-separated list without any additional text or explanation.
+
+Tags:"""
+
+            response = await self.llm.ainvoke(prompt)
+            tags_str = response.content.strip()
+            
+            # Parse and clean tags
+            tags = [tag.strip().lower().replace(' ', '-') for tag in tags_str.split(',')]
+            # Remove empty tags and limit to 8
+            tags = [tag for tag in tags if tag and len(tag) > 1][:8]
+            
+            return tags
+            
+        except Exception as e:
+            # If tag generation fails, return empty list
+            # We don't want to fail the entire summarization process
+            print(f"Failed to generate tags: {str(e)}")
+            return []
 
     def get_service_info(self) -> dict[str, Any]:
         """Get information about the summarization service."""

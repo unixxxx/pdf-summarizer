@@ -8,12 +8,13 @@ from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..auth.dependencies import CurrentUser
-from ..database.models import Document, Summary
+from ..database.models import Document, Summary, Tag
 from ..database.session import get_db
 from ..embeddings.dependencies import EmbeddingsServiceDep
 from ..storage.dependencies import StorageServiceDep
 from ..summarization.dependencies import SummarizerServiceDep
 from .dependencies import PDFServiceDep, ValidatedPDFFile
+from .export import ExportService
 from .schemas import (
     PDFSummaryHistoryItem,
     PDFSummaryResponse,
@@ -155,6 +156,34 @@ async def summarize_pdf(
             text=text,
             db=db,
         )
+        
+        # Process and create tags
+        generated_tags = summary_result.get("tags", [])
+        for tag_name in generated_tags:
+            if not tag_name:
+                continue
+                
+            # Create slug from tag name
+            slug = tag_name.lower().strip().replace(' ', '-')
+            
+            # Check if tag already exists
+            existing_tag = await db.execute(
+                select(Tag).where(Tag.slug == slug)
+            )
+            tag = existing_tag.scalar_one_or_none()
+            
+            if not tag:
+                # Create new tag
+                tag = Tag(
+                    name=tag_name,
+                    slug=slug,
+                )
+                db.add(tag)
+                await db.flush()
+            
+            # Add tag to document
+            if tag not in document.tags:
+                document.tags.append(tag)
 
     # Calculate word counts
     original_words = len(text.split())
@@ -186,23 +215,59 @@ async def summarize_pdf(
 
 
 @router.get(
-    "/history",
+    "/library",
     response_model=List[PDFSummaryHistoryItem],
-    summary="Get PDF summary history",
-    description="Get all PDF summaries for the current user",
+    summary="Get document library",
+    description="Get all documents with filtering and search capabilities",
 )
-async def get_pdf_history(
+async def get_document_library(
     current_user: CurrentUser,
     db: AsyncSession = Depends(get_db),
+    search: Annotated[Optional[str], Query(description="Search in filename and summary")] = None,
+    tag: Annotated[Optional[str], Query(description="Filter by tag slug")] = None,
+    tags: Annotated[Optional[List[str]], Query(description="Filter by multiple tag slugs")] = None,
+    limit: Annotated[int, Query(description="Maximum number of results", ge=1, le=100)] = 50,
+    offset: Annotated[int, Query(description="Number of results to skip", ge=0)] = 0,
 ) -> List[PDFSummaryHistoryItem]:
-    """Get user's PDF summary history."""
-    # Query summaries with joined document data
-    result = await db.execute(
+    """Get user's document library with search and filtering."""
+    from sqlalchemy import or_
+    from sqlalchemy.orm import selectinload
+    
+    # Build base query
+    query = (
         select(Summary, Document)
         .join(Document, Summary.document_id == Document.id)
         .where(Summary.user_id == current_user.id)
-        .order_by(desc(Summary.created_at))
+        .options(selectinload(Document.tags))
     )
+    
+    # Apply search filter
+    if search:
+        search_term = f"%{search}%"
+        query = query.where(
+            or_(
+                Document.filename.ilike(search_term),
+                Summary.summary_text.ilike(search_term)
+            )
+        )
+    
+    # Apply tag filter
+    if tag or tags:
+        # Combine single tag and multiple tags
+        tag_slugs = []
+        if tag:
+            tag_slugs.append(tag)
+        if tags:
+            tag_slugs.extend(tags)
+        
+        # Filter documents that have any of the specified tags
+        query = query.join(Document.tags).where(Tag.slug.in_(tag_slugs))
+    
+    # Apply ordering, limit and offset
+    query = query.order_by(desc(Summary.created_at)).limit(limit).offset(offset)
+    
+    # Execute query
+    result = await db.execute(query)
 
     # Transform results to response schema
     history_items = []
@@ -221,6 +286,15 @@ async def get_pdf_history(
                 llm_provider=summary.llm_provider,
                 llm_model=summary.llm_model,
                 createdAt=summary.created_at,
+                tags=[
+                    {
+                        "id": tag.id,
+                        "name": tag.name,
+                        "slug": tag.slug,
+                        "color": tag.color
+                    }
+                    for tag in document.tags
+                ],
             )
         )
 
@@ -268,3 +342,146 @@ async def delete_pdf_summary(
     await db.commit()
 
     return {"message": "Document and all associated data deleted successfully"}
+
+
+@router.get(
+    "/export/{summary_id}",
+    summary="Export summary in various formats",
+    description="Export a PDF summary as Markdown, PDF, or plain text",
+)
+async def export_summary(
+    summary_id: UUID,
+    current_user: CurrentUser,
+    db: AsyncSession = Depends(get_db),
+    format: Annotated[str, Query(description="Export format", pattern="^(markdown|pdf|text)$")] = "markdown",
+):
+    """Export a summary in the specified format."""
+    from fastapi.responses import Response
+    
+    # Get summary with document and tags
+    from sqlalchemy.orm import selectinload
+    
+    result = await db.execute(
+        select(Summary, Document)
+        .join(Document, Summary.document_id == Document.id)
+        .where(
+            Summary.id == summary_id,
+            Summary.user_id == current_user.id
+        )
+        .options(selectinload(Document.tags))
+    )
+    row = result.one_or_none()
+    
+    if not row:
+        raise HTTPException(status_code=404, detail="Summary not found")
+    
+    summary, document = row
+    
+    # Prepare metadata
+    metadata = {
+        "pages": document.page_count,
+        "size_mb": round(document.file_size / (1024 * 1024), 2),
+        "author": None,  # Could be extracted from PDF metadata if stored
+    }
+    
+    # Get tag names
+    tags = [tag.name for tag in document.tags]
+    
+    # Export based on format
+    export_service = ExportService()
+    
+    if format == "markdown":
+        content = await export_service.export_as_markdown(
+            summary.summary_text,
+            document.filename,
+            metadata,
+            tags
+        )
+        media_type = "text/markdown"
+        extension = "md"
+    elif format == "pdf":
+        content = await export_service.export_as_pdf(
+            summary.summary_text,
+            document.filename,
+            metadata,
+            tags
+        )
+        media_type = "application/pdf"
+        extension = "pdf"
+    else:  # text
+        content = await export_service.export_as_text(
+            summary.summary_text,
+            document.filename,
+            metadata,
+            tags
+        )
+        media_type = "text/plain"
+        extension = "txt"
+    
+    # Generate filename
+    base_filename = document.filename.rsplit('.', 1)[0]
+    export_filename = f"{base_filename}_summary.{extension}"
+    
+    return Response(
+        content=content,
+        media_type=media_type,
+        headers={
+            "Content-Disposition": f'attachment; filename="{export_filename}"'
+        }
+    )
+
+
+@router.get(
+    "/tags",
+    response_model=List[dict],
+    summary="Get all tags",
+    description="Get all available tags with document counts",
+)
+async def get_tags(
+    current_user: CurrentUser,
+    db: AsyncSession = Depends(get_db),
+) -> List[dict]:
+    """Get all tags used by the current user's documents."""
+    from sqlalchemy import func
+    
+    # Query tags with document counts
+    result = await db.execute(
+        select(
+            Tag,
+            func.count(Document.id).label('document_count')
+        )
+        .join(Tag.documents)
+        .where(Document.user_id == current_user.id)
+        .group_by(Tag.id)
+        .order_by(func.count(Document.id).desc())
+    )
+    
+    # Transform results
+    tags = []
+    for tag, count in result:
+        tags.append({
+            "id": tag.id,
+            "name": tag.name,
+            "slug": tag.slug,
+            "color": tag.color,
+            "document_count": count
+        })
+    
+    return tags
+
+
+# Keep the old history endpoint for backward compatibility
+@router.get(
+    "/history",
+    response_model=List[PDFSummaryHistoryItem],
+    summary="Get PDF summary history (deprecated)",
+    description="Deprecated: Use /library instead. Get all PDF summaries for the current user",
+    deprecated=True,
+)
+async def get_pdf_history(
+    current_user: CurrentUser,
+    db: AsyncSession = Depends(get_db),
+) -> List[PDFSummaryHistoryItem]:
+    """Get user's PDF summary history (deprecated - use /library)."""
+    # Redirect to library endpoint
+    return await get_document_library(current_user, db)

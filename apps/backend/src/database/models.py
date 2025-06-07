@@ -10,6 +10,7 @@ from sqlalchemy import (
     ForeignKey,
     Integer,
     String,
+    Table,
     Text,
     UniqueConstraint,
     func,
@@ -18,6 +19,15 @@ from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 
 from .session import Base
+
+# Association table for many-to-many relationship between documents and tags
+document_tags = Table(
+    'document_tags',
+    Base.metadata,
+    Column('document_id', UUID(as_uuid=True), ForeignKey('documents.id', ondelete='CASCADE'), primary_key=True),
+    Column('tag_id', UUID(as_uuid=True), ForeignKey('tags.id', ondelete='CASCADE'), primary_key=True),
+    Column('created_at', DateTime, nullable=False, default=func.now())
+)
 
 
 class User(Base):
@@ -74,6 +84,9 @@ class Document(Base):
     )
     chats = relationship(
         "Chat", back_populates="document", cascade="all, delete-orphan"
+    )
+    tags = relationship(
+        "Tag", secondary=document_tags, back_populates="documents"
     )
 
 
@@ -154,3 +167,21 @@ class ChatMessage(Base):
 
     # Relationships
     chat = relationship("Chat", back_populates="messages")
+
+
+class Tag(Base):
+    """Tag model for categorizing documents."""
+
+    __tablename__ = "tags"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
+    name = Column(String(100), unique=True, nullable=False, index=True)
+    slug = Column(String(100), unique=True, nullable=False, index=True)  # URL-friendly version
+    description = Column(Text, nullable=True)
+    color = Column(String(7), nullable=True)  # Hex color code
+    created_at = Column(DateTime, nullable=False, default=func.now())
+    
+    # Relationships
+    documents = relationship(
+        "Document", secondary=document_tags, back_populates="tags"
+    )

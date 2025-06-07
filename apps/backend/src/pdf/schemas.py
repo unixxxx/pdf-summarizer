@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Optional
+from typing import List, Optional
 from uuid import UUID
 
 from pydantic import Field
@@ -105,6 +105,18 @@ class PDFTextExtractionResponse(BaseSchema):
     }
 
 
+class TagSchema(BaseSchema):
+    """Tag schema for documents."""
+    
+    id: UUID = Field(..., description="Tag ID")
+    name: str = Field(..., description="Tag name")
+    slug: str = Field(..., description="URL-friendly tag slug")
+    color: Optional[str] = Field(None, description="Tag color (hex)")
+    
+    model_config = BaseSchema.model_config.copy()
+    model_config["from_attributes"] = True
+
+
 class PDFSummaryHistoryItem(BaseSchema):
     """Schema for a single PDF summary history item."""
 
@@ -116,6 +128,7 @@ class PDFSummaryHistoryItem(BaseSchema):
     createdAt: datetime = Field(..., description="Creation timestamp")
     processingTime: float = Field(..., description="Processing time in seconds")
     wordCount: int = Field(..., description="Summary word count")
+    tags: List[TagSchema] = Field(default_factory=list, description="Document tags")
 
     model_config = BaseSchema.model_config.copy()
     model_config["from_attributes"] = True
