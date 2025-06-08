@@ -54,6 +54,13 @@ export class ChatService {
     });
   }
   
+  findOrCreateChatSession(documentId: string, title?: string): Observable<{ id: string }> {
+    return this.http.post<{ id: string }>('/api/v1/chat/sessions/find-or-create', {
+      document_id: documentId,
+      title
+    });
+  }
+  
   getChatSessions(): Observable<ChatSession[]> {
     return this.http.get<ChatSession[]>('/api/v1/chat/sessions');
   }

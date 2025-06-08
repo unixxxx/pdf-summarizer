@@ -54,6 +54,39 @@ async def create_chat_session(
     return ChatResponse.model_validate(chat)
 
 
+@router.post(
+    "/sessions/find-or-create",
+    response_model=ChatResponse,
+    summary="Find existing chat or create new one",
+    description="Returns existing active chat session for a document or creates a new one",
+)
+async def find_or_create_chat_session(
+    request: CreateChatRequest,
+    chat_service: ChatServiceDep,
+    current_user: CurrentUser,
+    db: AsyncSession = Depends(get_db),
+) -> ChatResponse:
+    """Find an existing chat session or create a new one."""
+    # Check for existing active chat sessions for this document
+    existing_chat = await chat_service.find_active_chat_for_document(
+        user_id=current_user.id,
+        document_id=request.document_id,
+        db=db,
+    )
+    
+    if existing_chat:
+        return ChatResponse.model_validate(existing_chat)
+    
+    # No existing chat, create a new one
+    chat = await chat_service.create_chat_session(
+        user_id=current_user.id,
+        document_id=request.document_id,
+        title=request.title,
+        db=db,
+    )
+    return ChatResponse.model_validate(chat)
+
+
 @router.get(
     "/sessions",
     response_model=List[ChatListItem],

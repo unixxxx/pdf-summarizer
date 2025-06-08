@@ -154,6 +154,10 @@ export const ChatStore = signalStore(
     createChatSession: (documentId: string, title?: string) => {
       return chatService.createChatSession(documentId, title);
     },
+    
+    findOrCreateChatSession: (documentId: string, title?: string) => {
+      return chatService.findOrCreateChatSession(documentId, title);
+    },
 
     deleteChat: rxMethod<string>(
       pipe(

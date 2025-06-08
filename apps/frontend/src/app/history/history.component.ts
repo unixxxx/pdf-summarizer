@@ -918,16 +918,16 @@ export class HistoryComponent implements OnInit, OnDestroy {
     const doc = this.summaries().find((s) => s.document_id === documentId);
     if (!doc) return;
 
-    // Create a new chat session
+    // Find existing chat or create a new one
     this.chatStore
-      .createChatSession(documentId, `Chat with ${doc.fileName}`)
+      .findOrCreateChatSession(documentId, `Chat with ${doc.fileName}`)
       .subscribe({
         next: (chat) => {
           // Navigate to chat view
           this.router.navigate(['/app/chat', chat.id]);
         },
         error: (err) => {
-          console.error('Failed to create chat session:', err);
+          console.error('Failed to find or create chat session:', err);
         },
       });
   }

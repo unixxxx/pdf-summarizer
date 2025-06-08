@@ -44,6 +44,33 @@ class ChatService:
                 max_tokens=settings.openai_max_tokens,
             )
     
+    async def find_active_chat_for_document(
+        self,
+        user_id: UUID,
+        document_id: UUID,
+        db: AsyncSession,
+    ) -> Optional[Chat]:
+        """Find an existing active chat session for a document."""
+        # Query for the most recent chat session for this document
+        result = await db.execute(
+            select(Chat)
+            .where(
+                Chat.user_id == user_id,
+                Chat.document_id == document_id,
+            )
+            .order_by(Chat.updated_at.desc())
+            .limit(1)
+        )
+        chat = result.scalar_one_or_none()
+        
+        # Only return if it's a recent chat (within last 24 hours)
+        if chat:
+            from datetime import datetime, timedelta, timezone
+            if chat.updated_at and chat.updated_at.replace(tzinfo=timezone.utc) > datetime.now(timezone.utc) - timedelta(hours=24):
+                return chat
+        
+        return None
+    
     async def create_chat_session(
         self,
         user_id: UUID,

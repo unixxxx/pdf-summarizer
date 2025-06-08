@@ -79,7 +79,8 @@ class EmbeddingsService:
             document_chunks.append(chunk)
             db.add(chunk)
         
-        await db.commit()
+        # Don't commit here - let the caller handle transaction boundaries
+        await db.flush()
         return document_chunks
     
     async def search_similar_chunks(
@@ -235,4 +236,5 @@ class EmbeddingsService:
         for chunk in chunks:
             await db.delete(chunk)
         
-        await db.commit()
+        # Don't commit here - let the caller handle transaction boundaries
+        await db.flush()

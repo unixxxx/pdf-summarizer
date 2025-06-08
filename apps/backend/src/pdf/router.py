@@ -168,13 +168,13 @@ async def summarize_pdf(
     
     # Only process tags if document doesn't already have them
     # For existing documents, check if they have tags
-    existing_tags = []
+    existing_tags = False
     if document.id:  # Check if it's an existing document
-        # Query to check if document has tags
+        # Query to check if document has tags using explicit join
+        from ..database.models import document_tags
         tag_check = await db.execute(
-            select(func.count(Tag.id))
-            .join(Document.tags)
-            .where(Document.id == document.id)
+            select(func.count(document_tags.c.tag_id))
+            .where(document_tags.c.document_id == document.id)
         )
         tag_count = tag_check.scalar()
         existing_tags = tag_count > 0
@@ -228,9 +228,15 @@ async def summarize_pdf(
         # Add all tags to the document at once
         if tag_objects:
             print(f"DEBUG: Adding {len(tag_objects)} tags to document {document.id}")
-            # Use a more explicit approach to avoid lazy loading issues
-            document.tags.extend(tag_objects)
-            print(f"DEBUG: Document now has {len(document.tags)} tags")
+            # Use explicit inserts to avoid lazy loading issues
+            from ..database.models import document_tags
+            for tag in tag_objects:
+                await db.execute(
+                    document_tags.insert().values(
+                        document_id=document.id,
+                        tag_id=tag.id
+                    )
+                )
             # Flush to ensure the many-to-many relationships are saved
             await db.flush()
             print(f"DEBUG: Added {len(tag_objects)} tags to document {document.id}")
