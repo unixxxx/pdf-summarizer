@@ -1,6 +1,6 @@
 import { Component, OnInit, inject } from '@angular/core';
 import { ActivatedRoute } from '@angular/router';
-import { AuthService } from '../auth.service';
+import { AuthStore } from '../auth.store';
 
 @Component({
   selector: 'app-auth-callback',
@@ -30,7 +30,7 @@ import { AuthService } from '../auth.service';
 })
 export class AuthCallbackComponent implements OnInit {
   private route = inject(ActivatedRoute);
-  private authService = inject(AuthService);
+  private authStore = inject(AuthStore);
 
   ngOnInit() {
     // Check URL fragment first (for hash-based tokens)
@@ -39,7 +39,7 @@ export class AuthCallbackComponent implements OnInit {
     const fragmentToken = fragmentParams.get('token');
 
     if (fragmentToken) {
-      this.authService.handleCallback(fragmentToken);
+      this.authStore.handleCallback(fragmentToken);
       return;
     }
 
@@ -49,7 +49,7 @@ export class AuthCallbackComponent implements OnInit {
       const error = params['error'];
 
       if (token) {
-        this.authService.handleCallback(token);
+        this.authStore.handleCallback(token);
       } else if (error) {
         // Redirect to login with error
         window.location.href = '/login?error=' + error;

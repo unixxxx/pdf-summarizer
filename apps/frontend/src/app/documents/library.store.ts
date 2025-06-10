@@ -1,9 +1,14 @@
 import { inject, computed } from '@angular/core';
+import { HttpClient } from '@angular/common/http';
+import { Router } from '@angular/router';
 import { LibraryService } from './library.service';
+import { DocumentService } from './document.service';
+import { SummaryService } from '../summary/summary.service';
+import { ChatService } from '../chat/chat.service';
 import { LibraryItem, Tag } from './library.model';
 import { UIStore } from '../shared/ui.store';
-import { debounceTime, distinctUntilChanged, switchMap } from 'rxjs/operators';
-import { Subject } from 'rxjs';
+import { debounceTime, distinctUntilChanged, switchMap, tap } from 'rxjs/operators';
+import { Subject, of } from 'rxjs';
 import { tapResponse } from '@ngrx/operators';
 import {
   patchState,
@@ -50,56 +55,8 @@ export const LibraryStore = signalStore(
   { providedIn: 'root' },
   withState(initialState),
   withComputed((store) => ({
-    filteredItems: computed(() => {
-      const items = store.items();
-      const searchQuery = store.searchQuery().toLowerCase();
-      const selectedTags = store.selectedTags();
-
-      let filtered = items;
-
-      // Apply search filter
-      if (searchQuery) {
-        filtered = filtered.filter(
-          (item) =>
-            item.filename.toLowerCase().includes(searchQuery) ||
-            item.summary.content.toLowerCase().includes(searchQuery) ||
-            item.summary.tags.some((tag) => tag.name.toLowerCase().includes(searchQuery))
-        );
-      }
-
-      // Apply tag filter
-      if (selectedTags.length > 0) {
-        filtered = filtered.filter((item) =>
-          selectedTags.every((tagSlug) =>
-            item.summary.tags.some((tag) => tag.slug === tagSlug)
-          )
-        );
-      }
-
-      // Apply sorting
-      const sortBy = store.sortBy();
-      const sortOrder = store.sortOrder();
-      
-      const sorted = [...filtered].sort((a, b) => {
-        let comparison = 0;
-        
-        switch (sortBy) {
-          case 'title':
-            comparison = a.filename.localeCompare(b.filename);
-            break;
-          case 'size':
-            comparison = a.fileSize - b.fileSize;
-            break;
-          case 'date':
-          default:
-            comparison = new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
-        }
-        
-        return sortOrder === 'asc' ? comparison : -comparison;
-      });
-
-      return sorted;
-    }),
+    // Since we're doing server-side filtering, just return the items as-is
+    filteredItems: computed(() => store.items()),
 
     hasActiveFilters: computed(() => {
       return store.searchQuery().length > 0 || store.selectedTags().length > 0;
@@ -107,8 +64,39 @@ export const LibraryStore = signalStore(
   })),
   withMethods((store) => {
     const libraryService = inject(LibraryService);
+    const documentService = inject(DocumentService);
+    const summaryService = inject(SummaryService);
+    const chatService = inject(ChatService);
     const uiStore = inject(UIStore);
+    const router = inject(Router);
+    const http = inject(HttpClient);
     const searchSubject = new Subject<string>();
+
+    const loadLibrary = rxMethod<void>(
+      switchMap(() => {
+        patchState(store, { isLoading: true, error: null });
+
+        // Get current search criteria
+        const criteria = {
+          searchQuery: store.searchQuery(),
+          tags: store.selectedTags(),
+        };
+
+        return libraryService.browse(criteria).pipe(
+          tapResponse({
+            next: (items) => {
+              patchState(store, { items, isLoading: false });
+            },
+            error: () => {
+              patchState(store, { 
+                error: 'Failed to load library items', 
+                isLoading: false 
+              });
+            },
+          })
+        );
+      })
+    );
 
     const loadTags = rxMethod<void>(
       switchMap(() => {
@@ -126,25 +114,7 @@ export const LibraryStore = signalStore(
     );
 
     return {
-      loadLibrary: rxMethod<void>(
-        switchMap(() => {
-          patchState(store, { isLoading: true, error: null });
-
-          return libraryService.browse().pipe(
-            tapResponse({
-              next: (items) => {
-                patchState(store, { items, isLoading: false });
-              },
-              error: () => {
-                patchState(store, { 
-                  error: 'Failed to load library items', 
-                  isLoading: false 
-                });
-              },
-            })
-          );
-        })
-      ),
+      loadLibrary,
 
       loadTags,
 
@@ -156,9 +126,10 @@ export const LibraryStore = signalStore(
         searchSubject.pipe(
           debounceTime(300),
           distinctUntilChanged(),
-          switchMap((query) => {
+          tap((query) => {
             patchState(store, { searchQuery: query });
-            return [];
+            // Trigger a new library load with the search query
+            loadLibrary(undefined);
           })
         )
       ),
@@ -170,6 +141,8 @@ export const LibraryStore = signalStore(
           : [...currentTags, tagSlug];
         
         patchState(store, { selectedTags: newTags });
+        // Reload library with new tag filters
+        loadLibrary(undefined);
       },
 
       clearFilters(): void {
@@ -177,6 +150,8 @@ export const LibraryStore = signalStore(
           searchQuery: '', 
           selectedTags: [] 
         });
+        // Reload library without filters
+        loadLibrary(undefined);
       },
 
       setSortBy(sortBy: 'date' | 'title' | 'size'): void {
@@ -237,6 +212,104 @@ export const LibraryStore = signalStore(
                   error: 'Failed to delete document',
                   isLoading: false 
                 });
+              },
+            })
+          );
+        })
+      ),
+
+      exportSummary: rxMethod<{ summaryId: string; format: 'markdown' | 'pdf' | 'text' }>(
+        switchMap(({ summaryId, format }) => {
+          return summaryService.export(summaryId, format).pipe(
+            tapResponse({
+              next: (blob) => {
+                // Create download link
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `summary.${format}`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                window.URL.revokeObjectURL(url);
+                uiStore.showSuccess('Summary exported successfully');
+              },
+              error: () => {
+                uiStore.showError('Failed to export summary');
+              },
+            })
+          );
+        })
+      ),
+
+      downloadDocument: rxMethod<string>(
+        switchMap((documentId) => {
+          return documentService.getDownloadUrl(documentId).pipe(
+            switchMap((response) => {
+              if (!response.url) {
+                return of(null);
+              }
+              
+              // Use HttpClient to download with authentication
+              return http.get(response.url, { 
+                responseType: 'blob',
+                observe: 'response' 
+              }).pipe(
+                tapResponse({
+                  next: (httpResponse) => {
+                    // Get filename from Content-Disposition header if available
+                    const contentDisposition = httpResponse.headers.get('Content-Disposition');
+                    let finalFilename = response.filename || 'document';
+                    
+                    if (contentDisposition) {
+                      const filenameMatch = contentDisposition.match(/filename="?(.+?)"?$/);
+                      if (filenameMatch) {
+                        finalFilename = filenameMatch[1];
+                      }
+                    }
+                    
+                    // Create download link
+                    const blob = httpResponse.body;
+                    if (blob) {
+                      const a = document.createElement('a');
+                      const url = window.URL.createObjectURL(blob);
+                      a.href = url;
+                      a.download = finalFilename;
+                      document.body.appendChild(a);
+                      a.click();
+                      document.body.removeChild(a);
+                      window.URL.revokeObjectURL(url);
+                      uiStore.showSuccess('Document downloaded successfully');
+                    }
+                  },
+                  error: () => {
+                    uiStore.showError('Failed to download file');
+                  }
+                })
+              );
+            }),
+            tapResponse({
+              next: () => {
+                // Success already handled in inner observable
+              },
+              error: () => {
+                uiStore.showError('Failed to get download URL');
+              }
+            })
+          );
+        })
+      ),
+
+      startChat: rxMethod<{ documentId: string; filename: string }>(
+        switchMap(({ documentId, filename }) => {
+          const title = `Chat with ${filename}`;
+          return chatService.findOrCreateSession(documentId, title).pipe(
+            tapResponse({
+              next: (session) => {
+                router.navigate(['/app/chat', session.id]);
+              },
+              error: () => {
+                uiStore.showError('Failed to start chat');
               },
             })
           );

@@ -1,16 +1,11 @@
 import { Component, inject, ChangeDetectionStrategy } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { Router, RouterModule } from '@angular/router';
+import { RouterModule } from '@angular/router';
 import { FormsModule } from '@angular/forms';
-import { HttpClient } from '@angular/common/http';
 
 import { ConfirmationModalComponent } from '../../shared/confirmation-modal.component';
 import { LibraryStore } from '../library.store';
 import { LibraryItem } from '../library.model';
-import { SummaryService } from '../../summary/summary.service';
-import { DocumentService } from '../document.service';
-import { ChatService } from '../../chat/chat.service';
-import { UIStore } from '../../shared/ui.store';
 import { formatFileSize } from '../../shared/utils/formatters/file-size.formatter';
 import { formatRelativeDate } from '../../shared/utils/formatters/date.formatter';
 
@@ -62,7 +57,7 @@ import { formatRelativeDate } from '../../shared/utils/formatters/date.formatter
             placeholder="Search by filename or content..."
             class="w-full pl-10 pr-4 py-2 bg-background border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
           />
-          @if (searchQuery()) {
+          @if (searchQuery) {
           <button
             (click)="clearSearch()"
             class="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
@@ -580,14 +575,8 @@ import { formatRelativeDate } from '../../shared/utils/formatters/date.formatter
   styles: [],
 })
 export class LibraryComponent {
-  // Dependencies
+  // Dependencies - only inject stores
   private readonly libraryStore = inject(LibraryStore);
-  private readonly summaryService = inject(SummaryService);
-  private readonly documentService = inject(DocumentService);
-  private readonly chatService = inject(ChatService);
-  private readonly uiStore = inject(UIStore);
-  private readonly router = inject(Router);
-  private readonly http = inject(HttpClient);
 
   // Expose store selectors for template
   readonly filteredItems = this.libraryStore.filteredItems;
@@ -595,21 +584,29 @@ export class LibraryComponent {
   readonly selectedItem = this.libraryStore.selectedItem;
   readonly showModal = this.libraryStore.showModal;
   readonly showDeleteConfirm = this.libraryStore.showDeleteModal;
-  readonly searchQuery = this.libraryStore.searchQuery;
   readonly selectedTags = this.libraryStore.selectedTags;
   readonly availableTags = this.libraryStore.tags;
   readonly hasActiveFilters = this.libraryStore.hasActiveFilters;
   readonly error = this.libraryStore.error;
 
+  // Search query - create a local property for two-way binding
+  searchQuery = '';
+
   // Public formatter functions for template
   formatFileSize = formatFileSize;
   formatDate = formatRelativeDate;
 
+  constructor() {
+    // Initialize search query from store
+    this.searchQuery = this.libraryStore.searchQuery();
+  }
+
   onSearchChange() {
-    this.libraryStore.search(this.searchQuery());
+    this.libraryStore.search(this.searchQuery);
   }
 
   clearSearch() {
+    this.searchQuery = '';
     this.libraryStore.clearFilters();
   }
 
@@ -622,74 +619,11 @@ export class LibraryComponent {
   }
 
   exportSummary(summaryId: string, format: 'markdown' | 'pdf' | 'text') {
-    this.summaryService.export(summaryId, format).subscribe({
-      next: (blob) => {
-        // Create download link
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `summary.${format}`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        window.URL.revokeObjectURL(url);
-      },
-      error: (err) => {
-        this.uiStore.showError('Failed to export summary');
-        console.error('Failed to export summary', err);
-      },
-    });
+    this.libraryStore.exportSummary({ summaryId, format });
   }
 
   downloadOriginal(documentId: string) {
-    this.documentService.getDownloadUrl(documentId).subscribe({
-      next: (response) => {
-        if (response.url) {
-          // For authenticated downloads, we need to fetch with auth headers
-          this.downloadFile(response.url, response.filename || 'document');
-        }
-      },
-      error: () => {
-        this.uiStore.showError('Failed to download document');
-      },
-    });
-  }
-
-  private downloadFile(url: string, filename: string) {
-    // Use HttpClient to download with authentication
-    this.http.get(url, { 
-      responseType: 'blob',
-      observe: 'response' 
-    }).subscribe({
-      next: (response) => {
-        // Get filename from Content-Disposition header if available
-        const contentDisposition = response.headers.get('Content-Disposition');
-        let finalFilename = filename;
-        
-        if (contentDisposition) {
-          const filenameMatch = contentDisposition.match(/filename="?(.+?)"?$/);
-          if (filenameMatch) {
-            finalFilename = filenameMatch[1];
-          }
-        }
-        
-        // Create download link
-        const blob = response.body;
-        if (blob) {
-          const a = document.createElement('a');
-          const url = window.URL.createObjectURL(blob);
-          a.href = url;
-          a.download = finalFilename;
-          document.body.appendChild(a);
-          a.click();
-          document.body.removeChild(a);
-          window.URL.revokeObjectURL(url);
-        }
-      },
-      error: () => {
-        this.uiStore.showError('Failed to download file');
-      }
-    });
+    this.libraryStore.downloadDocument(documentId);
   }
 
   confirmDelete(id: string) {
@@ -713,14 +647,6 @@ export class LibraryComponent {
   }
 
   startChat(documentId: string, filename: string) {
-    const title = `Chat with ${filename}`;
-    this.chatService.findOrCreateSession(documentId, title).subscribe({
-      next: (session) => {
-        this.router.navigate(['/app/chat', session.id]);
-      },
-      error: () => {
-        this.uiStore.showError('Failed to start chat');
-      },
-    });
+    this.libraryStore.startChat({ documentId, filename });
   }
 }
