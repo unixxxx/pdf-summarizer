@@ -36,6 +36,8 @@ export interface LibrarySearchCriteria {
   tags?: string[];
 }
 
+export type ExportFormat = 'markdown' | 'pdf' | 'text';
+
 @Injectable({
   providedIn: 'root',
 })
@@ -91,5 +93,12 @@ export class LibraryService {
 
   deleteDocument(documentId: string): Observable<void> {
     return this.http.delete<void>(`/api/v1/document/${documentId}`);
+  }
+
+  exportSummary(summaryId: string, format: ExportFormat): Observable<Blob> {
+    return this.http.get(`${this.baseUrl}/export/${summaryId}`, {
+      params: { format },
+      responseType: 'blob',
+    });
   }
 }

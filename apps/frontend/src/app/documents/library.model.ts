@@ -1,12 +1,7 @@
-import { Summary } from '../summary/summary.model';
+import { Summary, Tag } from '../summary/summary.model';
 
-export interface Tag {
-  id: string;
-  name: string;
-  slug: string;
-  color?: string;
-  documentCount?: number;
-}
+// Re-export Tag for convenience
+export { Tag } from '../summary/summary.model';
 
 export interface LibraryItem {
   id: string;
