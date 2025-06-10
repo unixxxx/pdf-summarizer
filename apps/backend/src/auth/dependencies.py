@@ -4,12 +4,12 @@ from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.auth.jwt import JWTService
-from src.auth.oauth import OAuthService
-from src.auth.schemas import TokenData, User
-from src.auth.users_db import UserService
-from src.config import Settings, get_settings
-from src.database.session import get_db
+from ..config import Settings, get_settings
+from ..database.session import get_db
+from .jwt_service import JWTService
+from .oauth_service import OAuthService
+from .schemas import TokenData, User
+from .user_service import UserService
 
 # Security scheme
 security = HTTPBearer(

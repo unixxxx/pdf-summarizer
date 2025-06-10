@@ -1,7 +1,6 @@
-import os
 import secrets
 from functools import lru_cache
-from typing import List, Optional, Union
+from typing import Optional, Union
 
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -114,7 +113,7 @@ class Settings(BaseSettings):
     )  # 24 hours in seconds
 
     # Security
-    allowed_redirect_urls: Union[str, List[str]] = Field(
+    allowed_redirect_urls: Union[str, list[str]] = Field(
         default="http://localhost:4200,http://localhost:8000",
         env="ALLOWED_REDIRECT_URLS",
     )
@@ -185,7 +184,7 @@ class Settings(BaseSettings):
             return ["http://localhost:4200", "http://localhost:8000"]
 
     @property
-    def allowed_redirect_urls_list(self) -> List[str]:
+    def allowed_redirect_urls_list(self) -> list[str]:
         """Get allowed redirect URLs as a list."""
         if isinstance(self.allowed_redirect_urls, str):
             return [url.strip() for url in self.allowed_redirect_urls.split(",")]

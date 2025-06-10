@@ -9,11 +9,13 @@ import {
 } from '@ngrx/signals';
 import { rxMethod } from '@ngrx/signals/rxjs-interop';
 import { pipe, switchMap, tap } from 'rxjs';
-import { ChatService, ChatSession, ChatMessage, ChatWithMessages } from '../chat.service';
+import { ChatService } from './chat.service';
+import { Chat, ChatMessage, MessageRole } from './chat.model';
 
 interface ChatState {
-  sessions: ChatSession[];
-  currentChat: ChatWithMessages | null;
+  sessions: Chat[];
+  currentSession: Chat | null;
+  messages: ChatMessage[];
   selectedChatId: string | null;
   isLoadingSessions: boolean;
   isLoadingChat: boolean;
@@ -23,7 +25,8 @@ interface ChatState {
 
 const initialState: ChatState = {
   sessions: [],
-  currentChat: null,
+  currentSession: null,
+  messages: [],
   selectedChatId: null,
   isLoadingSessions: false,
   isLoadingChat: false,
@@ -35,22 +38,31 @@ export const ChatStore = signalStore(
   { providedIn: 'root' },
   withState(initialState),
   withComputed((store) => ({
-    currentMessages: computed(() => store.currentChat()?.messages || []),
-    chatTitle: computed(() => store.currentChat()?.chat.title || 'Chat'),
+    currentMessages: computed(() => store.messages()),
+    chatTitle: computed(() => store.currentSession()?.displayTitle || 'Chat'),
     hasSessions: computed(() => store.sessions().length > 0),
-    isLoading: computed(() => 
-      store.isLoadingSessions() || store.isLoadingChat() || store.isSendingMessage()
+    isLoading: computed(
+      () =>
+        store.isLoadingSessions() ||
+        store.isLoadingChat() ||
+        store.isSendingMessage()
     ),
+    hasActiveChat: computed(() => !!store.currentSession()),
   })),
   withMethods((store, chatService = inject(ChatService)) => ({
     loadSessions: rxMethod<void>(
       pipe(
         tap(() => patchState(store, { isLoadingSessions: true, error: null })),
         switchMap(() =>
-          chatService.getChatSessions().pipe(
+          chatService.getSessions().pipe(
             tapResponse({
               next: (sessions) =>
-                patchState(store, { sessions, isLoadingSessions: false }),
+                patchState(store, {
+                  sessions: sessions.sort(
+                    (a, b) => b.updatedAt.getTime() - a.updatedAt.getTime()
+                  ),
+                  isLoadingSessions: false,
+                }),
               error: () =>
                 patchState(store, {
                   error: 'Failed to load chat sessions',
@@ -64,18 +76,22 @@ export const ChatStore = signalStore(
 
     loadChat: rxMethod<string>(
       pipe(
-        tap((chatId) => 
-          patchState(store, { 
-            selectedChatId: chatId, 
-            isLoadingChat: true, 
-            error: null 
+        tap((chatId) =>
+          patchState(store, {
+            selectedChatId: chatId,
+            isLoadingChat: true,
+            error: null,
           })
         ),
         switchMap((chatId) =>
-          chatService.getChatWithMessages(chatId).pipe(
+          chatService.getSessionWithMessages(chatId).pipe(
             tapResponse({
-              next: (chat) =>
-                patchState(store, { currentChat: chat, isLoadingChat: false }),
+              next: ({ chat, messages }) =>
+                patchState(store, {
+                  currentSession: chat,
+                  messages,
+                  isLoadingChat: false,
+                }),
               error: () =>
                 patchState(store, {
                   error: 'Failed to load chat',
@@ -92,58 +108,57 @@ export const ChatStore = signalStore(
         tap(() => patchState(store, { isSendingMessage: true, error: null })),
         tap(({ message, chatId }) => {
           // Optimistically add user message
-          const tempUserMessage: ChatMessage = {
-            id: 'temp-' + Date.now(),
-            chat_id: chatId,
-            role: 'user',
-            content: message,
-            created_at: new Date().toISOString(),
-          };
+          const tempUserMessage = new ChatMessage(
+            'temp-' + Date.now(),
+            chatId,
+            MessageRole.USER,
+            message,
+            new Date()
+          );
 
-          const currentChat = store.currentChat();
-          if (currentChat) {
-            patchState(store, {
-              currentChat: {
-                ...currentChat,
-                messages: [...currentChat.messages, tempUserMessage],
-              },
-            });
-          }
+          patchState(store, {
+            messages: [...store.messages(), tempUserMessage],
+          });
         }),
         switchMap(({ chatId, message }) =>
           chatService.sendMessage(chatId, message).pipe(
             tapResponse({
               next: (responses) => {
-                const currentChat = store.currentChat();
-                if (currentChat) {
-                  // Remove temp message and add both user and AI messages
-                  const messagesWithoutTemp = currentChat.messages.filter(
-                    (m) => !m.id.startsWith('temp-')
+                // Remove temp message and add real responses
+                const messagesWithoutTemp = store
+                  .messages()
+                  .filter((m) => !m.id.startsWith('temp-'));
+                patchState(store, {
+                  messages: [...messagesWithoutTemp, ...responses],
+                  isSendingMessage: false,
+                });
+
+                // Update session's last message and timestamp
+                const currentSession = store.currentSession();
+                if (currentSession && responses.length > 0) {
+                  const updatedSession = new Chat(
+                    currentSession.id,
+                    currentSession.documentId,
+                    currentSession.userId,
+                    currentSession.title,
+                    currentSession.createdAt,
+                    new Date(),
+                    currentSession.documentFilename,
+                    responses[responses.length - 1].content,
+                    store.messages().length
                   );
-                  patchState(store, {
-                    currentChat: {
-                      ...currentChat,
-                      messages: [...messagesWithoutTemp, ...responses],
-                    },
-                    isSendingMessage: false,
-                  });
+                  patchState(store, { currentSession: updatedSession });
                 }
               },
               error: () => {
                 // Remove temp message on error
-                const currentChat = store.currentChat();
-                if (currentChat) {
-                  patchState(store, {
-                    currentChat: {
-                      ...currentChat,
-                      messages: currentChat.messages.filter(
-                        (m) => !m.id.startsWith('temp-')
-                      ),
-                    },
-                    error: 'Failed to send message',
-                    isSendingMessage: false,
-                  });
-                }
+                patchState(store, {
+                  messages: store
+                    .messages()
+                    .filter((m) => !m.id.startsWith('temp-')),
+                  error: 'Failed to send message',
+                  isSendingMessage: false,
+                });
               },
             })
           )
@@ -151,18 +166,18 @@ export const ChatStore = signalStore(
       )
     ),
 
-    createChatSession: (documentId: string, title?: string) => {
-      return chatService.createChatSession(documentId, title);
+    createChat: (documentId: string, title?: string) => {
+      return chatService.createSession(documentId, title);
     },
-    
-    findOrCreateChatSession: (documentId: string, title?: string) => {
-      return chatService.findOrCreateChatSession(documentId, title);
+
+    findOrCreateChat: (documentId: string, title?: string) => {
+      return chatService.findOrCreateSession(documentId, title);
     },
 
     deleteChat: rxMethod<string>(
       pipe(
         switchMap((chatId) =>
-          chatService.deleteChat(chatId).pipe(
+          chatService.deleteSession(chatId).pipe(
             tapResponse({
               next: () => {
                 patchState(store, {
@@ -171,7 +186,8 @@ export const ChatStore = signalStore(
                 if (store.selectedChatId() === chatId) {
                   patchState(store, {
                     selectedChatId: null,
-                    currentChat: null,
+                    currentSession: null,
+                    messages: [],
                   });
                 }
               },
@@ -185,9 +201,11 @@ export const ChatStore = signalStore(
 
     clearError: () => patchState(store, { error: null }),
 
-    clearCurrentChat: () => patchState(store, { 
-      currentChat: null, 
-      selectedChatId: null 
-    }),
+    clearCurrentChat: () =>
+      patchState(store, {
+        currentSession: null,
+        messages: [],
+        selectedChatId: null,
+      }),
   }))
 );

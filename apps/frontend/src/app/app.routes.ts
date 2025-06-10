@@ -1,42 +1,58 @@
 import { Routes } from '@angular/router';
-import { authGuard } from './auth.guard';
+import { authGuard } from './auth/auth.guard';
 
 export const routes: Routes = [
   { path: '', redirectTo: '/login', pathMatch: 'full' },
-  { 
-    path: 'login', 
-    loadComponent: () => import('./login/login.component').then(m => m.LoginComponent) 
+  {
+    path: 'login',
+    loadComponent: () =>
+      import('./auth/login/login.component').then((m) => m.LoginComponent),
   },
   {
     path: 'app',
-    loadComponent: () => import('./layout/layout.component').then(m => m.LayoutComponent),
+    loadComponent: () =>
+      import('./layout/layout.component').then((m) => m.LayoutComponent),
     canActivate: [authGuard],
     children: [
-      { path: '', redirectTo: 'upload', pathMatch: 'full' },
-      { 
-        path: 'upload', 
-        loadComponent: () => import('./upload/upload.component').then(m => m.UploadComponent) 
+      { path: '', redirectTo: 'summarize', pathMatch: 'full' },
+      {
+        path: 'summarize',
+        loadComponent: () =>
+          import('./summary/summarize/summarize.component').then(
+            (m) => m.SummarizeComponent
+          ),
       },
-      { 
-        path: 'text', 
-        loadComponent: () => import('./text-summarize/text-summarize.component').then(m => m.TextSummarizeComponent) 
+      {
+        path: 'library',
+        loadComponent: () =>
+          import('./documents/library/library.component').then(
+            (m) => m.LibraryComponent
+          ),
       },
-      { 
-        path: 'history', 
-        loadComponent: () => import('./history/history.component').then(m => m.HistoryComponent) 
+      {
+        path: 'chat',
+        loadComponent: () =>
+          import('./chat/chat.component').then((m) => m.ChatComponent),
       },
-      { 
-        path: 'chat', 
-        loadComponent: () => import('./chat/chat.component').then(m => m.ChatComponent) 
+      {
+        path: 'chat/:chatId',
+        loadComponent: () =>
+          import('./chat/chat.component').then((m) => m.ChatComponent),
       },
-      { 
-        path: 'chat/:chatId', 
-        loadComponent: () => import('./chat/chat.component').then(m => m.ChatComponent) 
-      }
-    ]
+    ],
   },
-  { 
-    path: 'auth/callback', 
-    loadComponent: () => import('./auth-callback/auth-callback.component').then(m => m.AuthCallbackComponent) 
-  }
+  {
+    path: 'auth/callback',
+    loadComponent: () =>
+      import('./auth/auth-callback/auth-callback.component').then(
+        (m) => m.AuthCallbackComponent
+      ),
+  },
+  {
+    path: 'auth/error',
+    loadComponent: () =>
+      import('./auth/auth-error/auth-error.component').then(
+        (m) => m.AuthErrorComponent
+      ),
+  },
 ];

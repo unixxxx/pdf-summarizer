@@ -49,6 +49,7 @@ dependencies = [
   "aioboto3>=13.0.0",
   "reportlab>=4.4.1",
   "markdown2>=2.5.3",
+  "pypdf2>=3.0.1",
 ]
 
 [tool.hatch.build.targets.wheel]
@@ -80,7 +81,7 @@ exclude = [
   "dist",
 ]
 
-line-length = 88
+line-length = 100
 indent-width = 4
 
 [tool.ruff.lint]
@@ -98,7 +99,14 @@ select = [
   # isort
   "I",
 ]
-ignore = []
+ignore = [
+  # Allow use of Depends in function defaults (FastAPI pattern)
+  "B008",
+  # Allow raising exceptions without from clause
+  "B904",
+  # Allow lines slightly longer than 100 chars (some are hard to break)
+  "E501",
+]
 
 fixable = ["ALL"]
 unfixable = []

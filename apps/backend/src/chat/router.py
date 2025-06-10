@@ -1,12 +1,10 @@
 """Chat API endpoints."""
 
-from typing import List
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select, func
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 
 from ..auth.dependencies import CurrentUser
 from ..database.models import Chat, ChatMessage, Document
@@ -89,14 +87,14 @@ async def find_or_create_chat_session(
 
 @router.get(
     "/sessions",
-    response_model=List[ChatListItem],
+    response_model=list[ChatListItem],
     summary="Get user's chat sessions",
     description="Get all chat sessions for the current user",
 )
 async def get_chat_sessions(
     current_user: CurrentUser,
     db: AsyncSession = Depends(get_db),
-) -> List[ChatListItem]:
+) -> list[ChatListItem]:
     """Get user's chat sessions with last message and message count."""
     # Query to get chats with document info and message stats
     stmt = (
@@ -175,7 +173,7 @@ async def get_chat_session(
 
 @router.post(
     "/sessions/{chat_id}/messages",
-    response_model=List[ChatMessageResponse],
+    response_model=list[ChatMessageResponse],
     summary="Send a message",
     description="Send a message in a chat session and get both user and AI response",
 )
@@ -185,7 +183,7 @@ async def send_message(
     chat_service: ChatServiceDep,
     current_user: CurrentUser,
     db: AsyncSession = Depends(get_db),
-) -> List[ChatMessageResponse]:
+) -> list[ChatMessageResponse]:
     """Send a message and get AI response."""
     user_message, ai_response = await chat_service.send_message(
         chat_id=chat_id,

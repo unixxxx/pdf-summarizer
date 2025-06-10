@@ -2,9 +2,9 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends
 
+from ..common.dependencies import LLMFactoryDep
 from ..common.schemas import HealthResponse, MessageResponse
 from ..config import Settings, get_settings
-from ..summarization.service import SummarizerService
 
 router = APIRouter(
     tags=["Health & Status"],
@@ -36,18 +36,19 @@ async def root() -> MessageResponse:
 )
 async def health_check(
     settings: Annotated[Settings, Depends(get_settings)],
+    factory: LLMFactoryDep,
 ) -> HealthResponse:
     """Check API health and dependent services."""
     services = {
         "pdf_processor": True,  # PDF service is always available
     }
 
-    # Check if OpenAI/Summarizer is configured
+    # Check if LLM service is configured
     try:
-        SummarizerService(settings)
-        services["openai"] = True
+        factory.create_chat_model()
+        services["llm"] = True
     except Exception:
-        services["openai"] = False
+        services["llm"] = False
 
     # Determine overall health
     all_healthy = all(services.values())

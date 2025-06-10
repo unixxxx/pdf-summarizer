@@ -1,4 +1,5 @@
-import logging
+"""Main application module with DDD structure."""
+
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
@@ -6,22 +7,23 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from .auth.router import router as auth_router
+from .chat.router import router as chat_router
 from .common.exceptions import PDFSummarizerException
+from .common.llm_factory import UnifiedLLMFactory
+from .common.logging import get_logger, setup_logging
 from .common.schemas import ErrorResponse
 from .config import get_settings
 
-# Import routers
-from .chat.router import router as chat_router
+# Import domain routers
+from .document.router import router as document_router
 from .health.router import router as health_router
-from .pdf.router import router as pdf_router
+from .library.router import router as library_router
 from .storage.router import router as storage_router
 from .summarization.router import router as summarization_router
 
 # Configure logging
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-)
-logger = logging.getLogger(__name__)
+setup_logging()
+logger = get_logger(__name__)
 
 
 @asynccontextmanager
@@ -33,20 +35,21 @@ async def lifespan(app: FastAPI):
 
     # Log configuration
     logger.info(f"Environment: {settings.environment}")
-    logger.info(f"LLM Provider: {settings.llm_provider}")
-
-    # Check LLM configuration
-    if settings.llm_provider.lower() == "ollama":
-        logger.info(f"Using Ollama at {settings.ollama_base_url}")
-        logger.info(f"Ollama Model: {settings.ollama_model}")
-    else:
-        logger.info(f"OpenAI Model: {settings.openai_model}")
-        if not settings.openai_api_key:
-            logger.warning(
-                "OpenAI API key not configured - summarization features will be unavailable"
-            )
-        else:
-            logger.info("OpenAI API configured successfully")
+    
+    # Check LLM configuration using factory
+    try:
+        llm_factory = UnifiedLLMFactory(settings)
+        provider_info = llm_factory.get_provider_info()
+        logger.info(f"LLM Provider: {provider_info['provider']}")
+        logger.info(f"LLM Model: {provider_info.get('model', 'N/A')}")
+        
+        if provider_info.get('base_url'):
+            logger.info(f"LLM Base URL: {provider_info['base_url']}")
+        if provider_info.get('embedding_model'):
+            logger.info(f"Embedding Model: {provider_info['embedding_model']}")
+            
+    except Exception as e:
+        logger.warning(f"LLM configuration error: {str(e)}")
 
     # Check OAuth configuration
     if settings.google_oauth_enabled:
@@ -97,7 +100,8 @@ def create_app() -> FastAPI:
     # Include routers
     app.include_router(health_router)
     app.include_router(auth_router, prefix="/api/v1")
-    app.include_router(pdf_router, prefix="/api/v1")
+    app.include_router(document_router, prefix="/api/v1")
+    app.include_router(library_router, prefix="/api/v1")
     app.include_router(summarization_router, prefix="/api/v1")
     app.include_router(chat_router, prefix="/api/v1")
     app.include_router(storage_router, prefix="/api/v1")

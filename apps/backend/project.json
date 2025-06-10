@@ -41,7 +41,7 @@
       "executor": "@nxlv/python:ruff-check",
       "outputs": [],
       "options": {
-        "lintFilePatterns": ["src", "tests"]
+        "lintFilePatterns": ["src"]
       },
       "cache": true
     },

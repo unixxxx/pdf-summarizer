@@ -69,10 +69,12 @@ class Document(Base):
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
     filename = Column(String(255), nullable=False)
     file_size = Column(Integer, nullable=False)  # in bytes
-    file_hash = Column(String(64), nullable=False)  # SHA256 hash
+    file_hash = Column(String(64), nullable=False, index=True)  # SHA256 hash with index
     page_count = Column(Integer, nullable=True)
     storage_path = Column(String(500), nullable=True)  # S3 key or local path
-    created_at = Column(DateTime, nullable=False, default=func.now())
+    extracted_text = Column(Text, nullable=True)
+    word_count = Column(Integer, nullable=True)
+    created_at = Column(DateTime, nullable=False, default=func.now(), index=True)  # Index for sorting
 
     # Relationships
     user = relationship("User", back_populates="documents")
@@ -105,7 +107,7 @@ class Summary(Base):
     processing_time = Column(Float, nullable=False)  # in seconds
     llm_provider = Column(String(50), nullable=False)  # openai, ollama
     llm_model = Column(String(100), nullable=False)
-    created_at = Column(DateTime, nullable=False, default=func.now())
+    created_at = Column(DateTime, nullable=False, default=func.now(), index=True)  # Index for sorting
 
     # Relationships
     user = relationship("User", back_populates="summaries")

@@ -1,7 +1,7 @@
 """Schemas for chat operations."""
 
 from datetime import datetime
-from typing import Optional, List, Dict, Any
+from typing import Any, Optional
 from uuid import UUID
 
 from pydantic import BaseModel, Field, field_validator
@@ -49,7 +49,7 @@ class ChatMessageResponse(BaseModel):
     chat_id: UUID
     role: str
     content: str
-    message_metadata: Optional[Dict[str, Any]] = None
+    message_metadata: Optional[dict[str, Any]] = None
     created_at: datetime
     
     class Config:
@@ -85,4 +85,4 @@ class ChatWithMessages(BaseModel):
     """Chat session with messages."""
     
     chat: ChatResponse
-    messages: List[ChatMessageResponse]
+    messages: list[ChatMessageResponse]

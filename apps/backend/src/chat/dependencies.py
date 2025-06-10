@@ -4,17 +4,19 @@ from typing import Annotated
 
 from fastapi import Depends
 
+from ..common.dependencies import LLMFactoryDep
 from ..common.exceptions import ServiceUnavailableError
 from ..config import Settings, get_settings
 from ..embeddings.dependencies import get_embeddings_service
-from ..embeddings.service import EmbeddingsService
-from .service import ChatService
+from ..embeddings.embeddings_service import EmbeddingsService
+from .chat_service import ChatService
 
 # Cache the chat service
 _chat_service: ChatService | None = None
 
 
 def get_chat_service(
+    factory: LLMFactoryDep,
     settings: Settings = Depends(get_settings),
     embeddings_service: EmbeddingsService = Depends(get_embeddings_service),
 ) -> ChatService:
@@ -23,7 +25,7 @@ def get_chat_service(
     
     if _chat_service is None:
         try:
-            _chat_service = ChatService(settings, embeddings_service)
+            _chat_service = ChatService(settings, embeddings_service, factory)
         except Exception:
             raise ServiceUnavailableError("Chat")
     

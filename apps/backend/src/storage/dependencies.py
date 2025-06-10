@@ -5,7 +5,7 @@ from typing import Annotated
 from fastapi import Depends
 
 from ..config import Settings, get_settings
-from .service import StorageService
+from .storage_service import StorageService
 
 
 def get_storage_service(settings: Annotated[Settings, Depends(get_settings)]) -> StorageService:

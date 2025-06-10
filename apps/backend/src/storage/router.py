@@ -3,7 +3,7 @@
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
-from fastapi.responses import RedirectResponse, Response
+from fastapi.responses import Response
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -52,10 +52,25 @@ async def download_document(
         )
     
     if not document.storage_path:
-        raise HTTPException(
-            status_code=404,
-            detail="Document file not available",
-        )
+        # For text documents, we need a different approach
+        # Return a special indicator that this is a text document
+        if document.extracted_text:
+            # Ensure filename has .txt extension for text documents
+            filename = document.filename
+            if not filename.endswith('.txt'):
+                filename = filename.rsplit('.', 1)[0] + '.txt'
+            
+            # Return JSON with a special flag for text documents
+            return {
+                "download_url": f"/api/v1/storage/text/{document_id}",
+                "filename": filename,
+                "is_text_document": True
+            }
+        else:
+            raise HTTPException(
+                status_code=404,
+                detail="Document content not available",
+            )
     
     # For S3, generate presigned URL and return it as JSON
     # This avoids CORS issues with redirects
@@ -75,22 +90,60 @@ async def download_document(
                 detail=f"Failed to generate download URL: {str(e)}",
             )
     
-    # For local storage, serve the file directly
-    try:
-        content = await storage_service.retrieve_file(document.storage_path)
-        
-        return Response(
-            content=content,
-            media_type="application/pdf",
-            headers={
-                "Content-Disposition": f'attachment; filename="{document.filename}"'
-            }
+    # For local storage, return the file path as URL
+    return {
+        "download_url": f"/api/v1/storage/{document.storage_path}",
+        "filename": document.filename
+    }
+
+
+@router.get(
+    "/text/{document_id}",
+    summary="Download text document",
+    description="Download a text document as a .txt file",
+)
+async def download_text_document(
+    document_id: UUID,
+    current_user: CurrentUser,
+    db: AsyncSession = Depends(get_db),
+):
+    """Download a text document as a .txt file."""
+    # Get document from database
+    result = await db.execute(
+        select(Document).where(
+            Document.id == document_id,
+            Document.user_id == current_user.id
         )
-    except Exception as e:
+    )
+    document = result.scalar_one_or_none()
+    
+    if not document:
         raise HTTPException(
             status_code=404,
-            detail=f"File not found: {str(e)}",
+            detail="Document not found",
         )
+    
+    if not document.extracted_text:
+        raise HTTPException(
+            status_code=404,
+            detail="Document content not available",
+        )
+    
+    # Generate text file
+    content = document.extracted_text.encode('utf-8')
+    
+    # Ensure filename has .txt extension
+    filename = document.filename
+    if not filename.endswith('.txt'):
+        filename = filename.rsplit('.', 1)[0] + '.txt'
+    
+    return Response(
+        content=content,
+        media_type="text/plain; charset=utf-8",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"'
+        }
+    )
 
 
 @router.get(

@@ -1,29 +1,58 @@
+"""Dependencies for Summarization domain."""
+
 from typing import Annotated
 
 from fastapi import Depends
+from langchain.schema.language_model import BaseLanguageModel
 
+from ..common.dependencies import LLMFactoryDep
 from ..common.exceptions import ServiceUnavailableError
 from ..config import Settings, get_settings
-from .service import SummarizerService
+from ..document.dependencies import DocumentServiceDep
+from ..library.dependencies import TagServiceDep
+from .orchestrator import SummarizationOrchestrator
+from .summary_service import SummaryService
 
 
-def get_summarizer_service(
-    settings: Annotated[Settings, Depends(get_settings)],
-) -> SummarizerService:
-    """
-    Get summarizer service instance.
-
-    Returns:
-        SummarizerService instance
-
-    Raises:
-        ServiceUnavailableError: If service cannot be initialized
-    """
+def get_llm(
+    factory: LLMFactoryDep,
+) -> BaseLanguageModel:
+    """Get LLM instance."""
     try:
-        return SummarizerService(settings)
-    except Exception:
-        raise ServiceUnavailableError("Summarization")
+        return factory.create_chat_model()
+    except Exception as e:
+        raise ServiceUnavailableError(f"LLM service: {str(e)}")
 
 
-# Type alias for cleaner dependency injection
-SummarizerServiceDep = Annotated[SummarizerService, Depends(get_summarizer_service)]
+def get_summary_service(
+    llm: Annotated[BaseLanguageModel, Depends(get_llm)],
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> SummaryService:
+    """Get summary service instance."""
+    return SummaryService(
+        llm=llm, 
+        chunk_size=settings.chunk_size, 
+        chunk_overlap=settings.chunk_overlap
+    )
+
+
+def get_summarization_orchestrator(
+    document_service: DocumentServiceDep,
+    summary_service: Annotated[SummaryService, Depends(get_summary_service)],
+    tag_service: TagServiceDep,
+) -> SummarizationOrchestrator:
+    """Get summarization orchestrator instance."""
+    return SummarizationOrchestrator(
+        document_service=document_service,
+        summarizer_service=summary_service,
+        tag_service=tag_service,
+    )
+
+
+# Type aliases for dependency injection
+SummaryServiceDep = Annotated[SummaryService, Depends(get_summary_service)]
+LLMDep = Annotated[BaseLanguageModel, Depends(get_llm)]
+SummarizationOrchestratorDep = Annotated[
+    SummarizationOrchestrator, 
+    Depends(get_summarization_orchestrator)
+]

@@ -1,25 +1,44 @@
-import hashlib
-import random
-import time
+"""Summarization router following FastAPI best practices."""
 
-from fastapi import APIRouter, Depends
-from sqlalchemy import select, func
+from typing import Optional
+
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    Form,
+    HTTPException,
+    UploadFile,
+    status,
+)
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..auth.dependencies import CurrentUser
-from ..common.exceptions import EmptyContentError
-from ..database.models import Document, Summary, Tag
+from ..common.exceptions import NotFoundError, SummarizationError
 from ..database.session import get_db
-from ..embeddings.dependencies import EmbeddingsServiceDep
+from ..document.dependencies import DocumentServiceDep
+from ..document.pdf_utils import extract_text_from_pdf
 from ..storage.dependencies import StorageServiceDep
-from .dependencies import SummarizerServiceDep
-from .schemas import TextSummaryRequest, TextSummaryResponse
+from .dependencies import (
+    LLMFactoryDep,
+    SummarizationOrchestratorDep,
+    SummaryServiceDep,
+)
+from .schemas import (
+    CreateSummaryRequest,
+    DocumentInfoResponse,
+    SummaryResponse,
+    SummaryStyle,
+    TagResponse,
+)
 
 router = APIRouter(
-    prefix="/summarize",
-    tags=["Text Summarization"],
+    prefix="/summarization",
+    tags=["Summarization"],
     responses={
         400: {"description": "Bad request"},
+        404: {"description": "Resource not found"},
+        422: {"description": "Validation error"},
         500: {"description": "Internal server error"},
         503: {"description": "Service unavailable"},
     },
@@ -27,178 +46,334 @@ router = APIRouter(
 
 
 @router.post(
-    "/text",
-    response_model=TextSummaryResponse,
-    summary="Summarize text",
-    description="Generate an AI-powered summary of the provided text",
+    "",
+    response_model=SummaryResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Create a summary",
+    description="Create a summary for an existing document or raw text",
+    responses={
+        201: {"description": "Summary created successfully"},
+        400: {"description": "Invalid request parameters"},
+        404: {"description": "Document not found"},
+    },
 )
-async def summarize_text(
-    request: TextSummaryRequest,
-    summarizer: SummarizerServiceDep,
-    embeddings_service: EmbeddingsServiceDep,
-    storage_service: StorageServiceDep,
+async def create_summary(
+    request: CreateSummaryRequest,
     current_user: CurrentUser,
+    orchestrator: SummarizationOrchestratorDep,
+    llm_factory: LLMFactoryDep,
     db: AsyncSession = Depends(get_db),
-) -> TextSummaryResponse:
-    """Generate a summary of the provided text content."""
-    start_time = time.time()
+) -> SummaryResponse:
+    """
+    Create a summary for a document or text.
     
-    # Validate text has content
-    if not request.text.strip():
-        raise EmptyContentError("text input")
-
-    # Generate summary with tags using the same method as PDF
-    summary_result = await summarizer.summarize_pdf(
-        request.text, request.max_length, request.format, request.instructions
-    )
-
-    # Extract summary and stats
-    summary = summary_result["summary"]
+    Either `document_id` or `text` must be provided:
+    - If `document_id` is provided, summarize an existing document
+    - If `text` is provided, create a new document and summarize it (requires `filename`)
+    """
+    # Validate request
+    if not request.document_id and not request.text:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Either document_id or text must be provided",
+        )
     
-    # Calculate processing time
-    processing_time = time.time() - start_time
+    if request.text and not request.filename:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Filename is required when providing raw text",
+        )
     
-    # Create a hash of the text content for deduplication
-    text_hash = hashlib.sha256(request.text.encode()).hexdigest()
+    # Prepare options
+    options = {
+        "style": request.style.value,
+        "max_length": request.max_length,
+        "focus_areas": request.focus_areas,
+        "custom_prompt": request.custom_prompt,
+    }
+    # Remove None values
+    options = {k: v for k, v in options.items() if v is not None}
     
-    # Create a document record for the text input
-    # Use a descriptive filename for text inputs
-    preview = request.text[:50] + "..." if len(request.text) > 50 else request.text
-    filename = f"Text: {preview}"
-    
-    # Store text as a file
-    storage_path, file_size = await storage_service.store_text_as_file(
-        text=request.text,
-        user_id=str(current_user.id),
-        title=preview,
-    )
-    
-    document = Document(
-        user_id=current_user.id,
-        filename=filename,
-        file_size=file_size,
-        file_hash=text_hash,
-        page_count=1,  # Text input is considered 1 page
-        storage_path=storage_path,
-    )
-    db.add(document)
-    await db.flush()
-    
-    # Generate embeddings for the text document
-    await embeddings_service.create_document_embeddings(
-        document_id=str(document.id),
-        text=request.text,
-        db=db,
-    )
-    
-    # Process and create tags (same logic as PDF endpoint)
-    generated_tags = summary_result.get("tags", [])
-    print(f"DEBUG: Text summarization generated {len(generated_tags)} tags: {generated_tags}")
-    
-    if generated_tags:
-        for tag_name in generated_tags:
-            if not tag_name:
-                continue
-                
-            # Ensure tag name is not too long (max 100 chars in DB)
-            tag_name = tag_name[:50] if len(tag_name) > 50 else tag_name
-            
-            # Create slug from tag name
-            slug = tag_name.lower().strip().replace(' ', '-')
-            slug = slug[:50] if len(slug) > 50 else slug
-            
-            # Check if tag already exists
-            existing_tag = await db.execute(
-                select(Tag).where(Tag.slug == slug)
+    try:
+        # Summarize based on input type
+        if request.document_id:
+            summary = await orchestrator.summarize_document(
+                document_id=request.document_id,
+                user_id=current_user.id,
+                options=options,
+                db=db,
             )
-            tag = existing_tag.scalar_one_or_none()
-            
-            if not tag:
-                # Generate a random color for the tag
-                colors = [
-                    "#3B82F6",  # Blue
-                    "#10B981",  # Green
-                    "#F59E0B",  # Yellow
-                    "#EF4444",  # Red
-                    "#8B5CF6",  # Purple
-                    "#EC4899",  # Pink
-                    "#14B8A6",  # Teal
-                    "#F97316",  # Orange
-                    "#6366F1",  # Indigo
-                    "#84CC16",  # Lime
-                ]
-                color = random.choice(colors)
-                
-                # Create new tag
-                tag = Tag(
-                    name=tag_name,
-                    slug=slug,
-                    color=color,
-                )
-                db.add(tag)
-                await db.flush()
-            
-            # Add tag to document using explicit query to avoid lazy loading
-            # Check if this tag is already associated with the document
-            from ..database.models import document_tags
-            existing_association = await db.execute(
-                select(document_tags).where(
-                    document_tags.c.document_id == document.id,
-                    document_tags.c.tag_id == tag.id
-                )
+            # Get document for response
+            document = await orchestrator.document_service.get_document(
+                document_id=request.document_id,
+                user_id=current_user.id,
+                db=db,
             )
-            if not existing_association.first():
-                # Create the association
-                await db.execute(
-                    document_tags.insert().values(
-                        document_id=document.id,
-                        tag_id=tag.id
-                    )
-                )
+        else:
+            # Summarize text (creates new document)
+            summary = await orchestrator.summarize_text(
+                text=request.text,
+                filename=request.filename,
+                user_id=current_user.id,
+                options=options,
+                db=db,
+            )
+            # Get created document
+            document = await orchestrator.document_service.get_document(
+                document_id=summary.document_id,
+                user_id=current_user.id,
+                db=db,
+            )
         
-        # Flush to ensure the many-to-many relationships are saved
-        await db.flush()
-        print(f"DEBUG: Added {len(generated_tags)} tags to text document {document.id}")
-    
-    # Get stats from the result
-    original_words = summary_result["stats"].get("original_words", len(request.text.split()))
-    summary_words = summary_result["stats"].get("summary_words", len(summary.split()))
-    
-    # Create summary record
-    summary_record = Summary(
-        user_id=current_user.id,
-        document_id=document.id,
-        summary_text=summary,
-        original_word_count=original_words,
-        summary_word_count=summary_words,
-        compression_ratio=original_words / summary_words if summary_words > 0 else 0,
-        processing_time=processing_time,
-        llm_provider=summarizer.provider_name,
-        llm_model=summarizer.model_name,
-    )
-    db.add(summary_record)
-    await db.commit()
+        # Refresh document to get tags before commit
+        await db.refresh(document, ["tags"])
+        
+        await db.commit()
+        
+        # Get LLM info
+        llm_info = llm_factory.get_provider_info()
+        
+        # Prepare response
+        return SummaryResponse(
+            id=summary.id,
+            document_id=summary.document_id,
+            content=summary.summary_text,
+            word_count=summary.summary_word_count,
+            processing_time=summary.processing_time,
+            tags=[
+                TagResponse(
+                    id=tag.id,
+                    name=tag.name,
+                    slug=tag.slug,
+                    color=tag.color,
+                )
+                for tag in (document.tags or [])
+            ],
+            document_info=DocumentInfoResponse(
+                id=document.id,
+                filename=document.filename,
+                file_size=document.file_size,
+                word_count=document.word_count,
+                page_count=document.page_count,
+                created_at=document.created_at.isoformat(),
+            ),
+            llm_provider=llm_info["provider"],
+            llm_model=llm_info["model"],
+        )
+        
+    except NotFoundError:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Document not found",
+        )
+    except SummarizationError as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e),
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Summarization failed: {str(e)}",
+        )
 
-    return TextSummaryResponse(
-        summary=summary,
-        original_length=len(request.text),
-        summary_length=len(summary),
-        original_words=original_words,
-        summary_words=summary_words,
-        compression_ratio=round((1 - summary_words / original_words) * 100, 2)
-        if original_words > 0
-        else 0,
-    )
+
+@router.post(
+    "/upload",
+    response_model=SummaryResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Upload and summarize a document",
+    description="Upload a PDF or text file and get a summary in one operation",
+    responses={
+        201: {"description": "Document uploaded and summarized successfully"},
+        400: {"description": "Invalid file type"},
+        413: {"description": "File too large"},
+    },
+)
+async def upload_and_summarize(
+    current_user: CurrentUser,
+    orchestrator: SummarizationOrchestratorDep,
+    document_service: DocumentServiceDep,
+    storage_service: StorageServiceDep,
+    llm_factory: LLMFactoryDep,
+    db: AsyncSession = Depends(get_db),
+    file: UploadFile = File(..., description="PDF or text file to summarize"),
+    style: SummaryStyle = Form(
+        SummaryStyle.BALANCED,
+        description="Summary style"
+    ),
+    max_length: Optional[int] = Form(
+        None,
+        description="Maximum length in words",
+        ge=50,
+        le=5000
+    ),
+    focus_areas: Optional[str] = Form(
+        None,
+        description="Areas to focus on",
+        max_length=500
+    ),
+    custom_prompt: Optional[str] = Form(
+        None,
+        description="Custom prompt modifier",
+        max_length=1000
+    ),
+) -> SummaryResponse:
+    """
+    Upload a file and summarize it in one operation.
+    
+    Supported file types:
+    - PDF files (application/pdf)
+    - Text files (text/plain)
+    """
+    # Validate file type
+    if file.content_type not in ["application/pdf", "text/plain"]:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                f"Unsupported file type: {file.content_type}. "
+                "Only PDF and text files are supported."
+            ),
+        )
+    
+    # Validate file size (50MB limit)
+    if file.size and file.size > 50 * 1024 * 1024:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail="File size exceeds 50MB limit",
+        )
+    
+    try:
+        # Read file content
+        content = await file.read()
+        
+        # Extract text based on file type
+        if file.content_type == "application/pdf":
+            # Extract text from PDF
+            pdf_data = await extract_text_from_pdf(content)
+            text = pdf_data["text"]
+            metadata = pdf_data["metadata"]
+        else:
+            # Plain text file
+            text = content.decode("utf-8")
+            metadata = {}
+        
+        # Store file
+        file_type = 'pdf' if file.content_type == 'application/pdf' else 'txt'
+        storage_path = await storage_service.store_file(
+            content=content,
+            user_id=str(current_user.id),
+            file_type=file_type,
+            original_filename=file.filename,
+        )
+        
+        # Create document
+        document, _ = await document_service.create_document(
+            user_id=current_user.id,
+            filename=file.filename,
+            content=content,
+            file_size=len(content),
+            storage_path=storage_path,
+            db=db,
+        )
+        
+        # Update with extracted text
+        word_count = len(text.split())
+        document = await document_service.update_document_content(
+            document_id=document.id,
+            extracted_text=text,
+            word_count=word_count,
+            db=db,
+        )
+        
+        # Update page count if available
+        if metadata.get("page_count"):
+            document.page_count = metadata["page_count"]
+            await db.flush()
+        
+        # Prepare summarization options
+        options = {
+            "style": style.value,
+            "max_length": max_length,
+            "focus_areas": focus_areas,
+            "custom_prompt": custom_prompt,
+        }
+        options = {k: v for k, v in options.items() if v is not None}
+        
+        # Create summary
+        summary = await orchestrator.summarize_document(
+            document_id=document.id,
+            user_id=current_user.id,
+            options=options,
+            db=db,
+        )
+        
+        # Refresh document to get tags before commit
+        await db.refresh(document, ["tags"])
+        
+        await db.commit()
+        
+        # Get LLM info
+        llm_info = llm_factory.get_provider_info()
+        
+        return SummaryResponse(
+            id=summary.id,
+            document_id=summary.document_id,
+            content=summary.summary_text,
+            word_count=summary.summary_word_count,
+            processing_time=summary.processing_time,
+            tags=[
+                TagResponse(
+                    id=tag.id,
+                    name=tag.name,
+                    slug=tag.slug,
+                    color=tag.color,
+                )
+                for tag in (document.tags or [])
+            ],
+            document_info=DocumentInfoResponse(
+                id=document.id,
+                filename=document.filename,
+                file_size=document.file_size,
+                word_count=document.word_count,
+                page_count=document.page_count,
+                created_at=document.created_at.isoformat(),
+            ),
+            llm_provider=llm_info["provider"],
+            llm_model=llm_info["model"],
+        )
+        
+    except Exception as e:
+        # Clean up on error
+        if 'document' in locals():
+            await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to process file: {str(e)}",
+        )
 
 
 @router.get(
     "/info",
     summary="Get summarization service info",
     description="Get information about the summarization service configuration",
+    responses={
+        200: {"description": "Service information"},
+    },
 )
 async def get_service_info(
-    summarizer: SummarizerServiceDep,
-    current_user: CurrentUser,
+    current_user: CurrentUser,  # noqa: ARG001 - Required for authentication
+    summary_service: SummaryServiceDep,
+    llm_factory: LLMFactoryDep,
 ) -> dict:
     """Get information about the summarization service."""
-    return summarizer.get_service_info()
+    service_info = summary_service.get_service_info()
+    llm_info = llm_factory.get_provider_info()
+    
+    return {
+        **service_info,
+        "llm": llm_info,
+        "supported_styles": [style.value for style in SummaryStyle],
+        "max_file_size_mb": 50,
+        "supported_file_types": ["application/pdf", "text/plain"],
+    }

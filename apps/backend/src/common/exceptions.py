@@ -1,4 +1,4 @@
-from typing import Any, Dict, Optional
+from typing import Any, Optional
 
 from fastapi import HTTPException, status
 
@@ -10,7 +10,7 @@ class PDFSummarizerException(HTTPException):
         self,
         status_code: int,
         detail: str,
-        headers: Optional[Dict[str, Any]] = None,
+        headers: Optional[dict[str, Any]] = None,
     ):
         super().__init__(status_code=status_code, detail=detail, headers=headers)
 
@@ -100,6 +100,16 @@ class NotFoundError(PDFSummarizerException):
         super().__init__(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"{resource} not found",
+        )
+
+
+class DuplicateResourceError(PDFSummarizerException):
+    """Raised when a duplicate resource is detected."""
+
+    def __init__(self, resource: str, identifier: str):
+        super().__init__(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"{resource} with identifier '{identifier}' already exists",
         )
 
 
