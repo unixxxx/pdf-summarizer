@@ -128,4 +128,5 @@ async def get_optional_user(
 
 # Type aliases for dependency injection
 CurrentUser = Annotated[User, Depends(get_current_user)]
+CurrentUserDep = Annotated[User, Depends(get_current_user)]  # New naming convention
 OptionalUser = Annotated[Optional[User], Depends(get_optional_user)]

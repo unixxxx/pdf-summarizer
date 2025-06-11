@@ -3,7 +3,7 @@ import { HttpClient } from '@angular/common/http';
 import { Observable, throwError } from 'rxjs';
 import { map } from 'rxjs/operators';
 import { Summary, SummaryOptions, SummaryDto } from './summary.model';
-import { DocumentMetadata } from '../documents/document.model';
+import { DocumentMetadata } from '../library/documents/document.model';
 
 @Injectable({
   providedIn: 'root',
@@ -74,7 +74,7 @@ export class SummaryService {
     format: 'pdf' | 'markdown' | 'text'
   ): Observable<Blob> {
     return this.http.get(
-      `/api/v1/library/export/${summaryId}?format=${format}`,
+      `/api/v1/export/${summaryId}?format=${format}`,
       {
         responseType: 'blob',
       }
@@ -82,6 +82,6 @@ export class SummaryService {
   }
 
   delete(summaryId: string): Observable<void> {
-    return this.http.delete<void>(`/api/v1/library/summaries/${summaryId}`);
+    return this.http.delete<void>(`${this.baseUrl}/${summaryId}`);
   }
 }

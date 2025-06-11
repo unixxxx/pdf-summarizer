@@ -16,10 +16,13 @@ from .config import get_settings
 
 # Import domain routers
 from .document.router import router as document_router
+from .export.router import router as export_router
+from .folder.router import router as folder_router
 from .health.router import router as health_router
-from .library.router import router as library_router
 from .storage.router import router as storage_router
 from .summarization.router import router as summarization_router
+from .tag.router import router as tag_router
+from .trash.router import router as trash_router
 
 # Configure logging
 setup_logging()
@@ -101,10 +104,13 @@ def create_app() -> FastAPI:
     app.include_router(health_router)
     app.include_router(auth_router, prefix="/api/v1")
     app.include_router(document_router, prefix="/api/v1")
-    app.include_router(library_router, prefix="/api/v1")
+    app.include_router(folder_router, prefix="/api/v1")
+    app.include_router(tag_router, prefix="/api/v1")
+    app.include_router(export_router, prefix="/api/v1")
     app.include_router(summarization_router, prefix="/api/v1")
     app.include_router(chat_router, prefix="/api/v1")
     app.include_router(storage_router, prefix="/api/v1")
+    app.include_router(trash_router, prefix="/api/v1")
 
     # Global exception handler
     @app.exception_handler(PDFSummarizerException)

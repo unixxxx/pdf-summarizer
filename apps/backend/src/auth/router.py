@@ -26,6 +26,7 @@ from .schemas import (
     User,
 )
 from .user_service import UserService
+from .utils import validate_oauth_provider
 
 logger = logging.getLogger(__name__)
 
@@ -110,24 +111,7 @@ async def oauth_login(
         HTTPException: If provider is not supported
     """
     # Validate provider
-    if provider not in ["google", "github"]:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Unsupported provider: {provider}",
-        )
-
-    # Check if provider is enabled
-    if provider == "google" and not settings.google_oauth_enabled:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Google OAuth is not configured",
-        )
-    
-    if provider == "github" and not settings.github_oauth_enabled:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="GitHub OAuth is not configured",
-        )
+    validate_oauth_provider(provider, settings)
 
     # Validate redirect URL
     redirect_url = oauth_service.validate_redirect_url(redirect_url)

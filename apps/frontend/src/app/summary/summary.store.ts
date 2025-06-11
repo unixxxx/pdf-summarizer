@@ -12,7 +12,7 @@ import {
 import { rxMethod } from '@ngrx/signals/rxjs-interop';
 import { SummaryService } from './summary.service';
 import { Summary, SummaryOptions, SummaryStyle } from './summary.model';
-import { DocumentMetadata } from '../documents/document.model';
+import { DocumentMetadata } from '../library/documents/document.model';
 import { UIStore } from '../shared/ui.store';
 
 export interface SummaryState {
@@ -20,22 +20,22 @@ export interface SummaryState {
   inputMode: 'text' | 'file';
   inputText: string;
   selectedFile: File | null;
-  
+
   // Options state
   selectedStyle: SummaryStyle;
   maxLength: number | null;
   focusAreas: string;
   customPrompt: string;
-  
+
   // Processing state
   isProcessing: boolean;
   processingStatus: string;
   progress: number;
-  
+
   // Result state
   summary: Summary | null;
   error: string | null;
-  
+
   // UI state
   showError: boolean;
   copied: boolean;
@@ -91,7 +91,7 @@ export const SummaryStore = signalStore(
 
       if (originalWords === 0) return 0;
       return Math.round(((originalWords - summaryWords) / originalWords) * 100);
-    })
+    }),
   })),
 
   withMethods((store) => {
@@ -102,8 +102,29 @@ export const SummaryStore = signalStore(
     const generateFilename = (text: string): string => {
       const words = text.trim().split(/\s+/);
       const meaningfulWords: string[] = [];
-      const stopWords = new Set(['the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by', 'from', 'as', 'is', 'was', 'are', 'were']);
-      
+      const stopWords = new Set([
+        'the',
+        'a',
+        'an',
+        'and',
+        'or',
+        'but',
+        'in',
+        'on',
+        'at',
+        'to',
+        'for',
+        'of',
+        'with',
+        'by',
+        'from',
+        'as',
+        'is',
+        'was',
+        'are',
+        'were',
+      ]);
+
       for (const word of words) {
         const cleanWord = word.toLowerCase().replace(/[^a-z0-9]/g, '');
         if (cleanWord && !stopWords.has(cleanWord) && cleanWord.length > 2) {
@@ -111,11 +132,11 @@ export const SummaryStore = signalStore(
         }
         if (meaningfulWords.length >= 3) break;
       }
-      
+
       if (meaningfulWords.length === 0) {
         return `summary_${Date.now()}.txt`;
       }
-      
+
       const timestamp = new Date().toISOString().split('T')[0];
       return `${meaningfulWords.join('_')}_${timestamp}.txt`;
     };
@@ -132,11 +153,15 @@ export const SummaryStore = signalStore(
 
       setFile(file: File | null): void {
         if (file) {
-          const metadata = new DocumentMetadata(file.name, file.size, file.type);
+          const metadata = new DocumentMetadata(
+            file.name,
+            file.size,
+            file.type
+          );
           if (!metadata.isValid) {
-            patchState(store, { 
+            patchState(store, {
               error: metadata.validationErrors.join('. '),
-              showError: true 
+              showError: true,
             });
             return;
           }
@@ -171,12 +196,12 @@ export const SummaryStore = signalStore(
             return of(null);
           }
 
-          patchState(store, { 
-            isProcessing: true, 
-            error: null, 
+          patchState(store, {
+            isProcessing: true,
+            error: null,
             showError: false,
             processingStatus: 'Processing text...',
-            progress: 0
+            progress: 0,
           });
 
           // Create summary options
@@ -195,12 +220,14 @@ export const SummaryStore = signalStore(
             tap(() => {
               const currentProgress = store.progress();
               patchState(store, { progress: currentProgress + 15 });
-              
+
               if (currentProgress > 30) {
                 patchState(store, { processingStatus: 'Analyzing content...' });
               }
               if (currentProgress > 60) {
-                patchState(store, { processingStatus: 'Generating summary...' });
+                patchState(store, {
+                  processingStatus: 'Generating summary...',
+                });
               }
             })
           );
@@ -208,26 +235,28 @@ export const SummaryStore = signalStore(
           // Subscribe to progress updates
           progress$.subscribe();
 
-          return summaryService.createForText(store.inputText(), filename, options).pipe(
-            tapResponse({
-              next: (summary) => {
-                patchState(store, {
-                  progress: 100,
-                  processingStatus: 'Complete!',
-                  summary,
-                  isProcessing: false,
-                });
-                uiStore.showSuccess('Summary generated successfully!');
-              },
-              error: (err: Error) => {
-                patchState(store, {
-                  isProcessing: false,
-                  error: err.message || 'Failed to generate summary',
-                  showError: true,
-                });
-              },
-            })
-          );
+          return summaryService
+            .createForText(store.inputText(), filename, options)
+            .pipe(
+              tapResponse({
+                next: (summary) => {
+                  patchState(store, {
+                    progress: 100,
+                    processingStatus: 'Complete!',
+                    summary,
+                    isProcessing: false,
+                  });
+                  uiStore.showSuccess('Summary generated successfully!');
+                },
+                error: (err: Error) => {
+                  patchState(store, {
+                    isProcessing: false,
+                    error: err.message || 'Failed to generate summary',
+                    showError: true,
+                  });
+                },
+              })
+            );
         })
       ),
 
@@ -236,12 +265,12 @@ export const SummaryStore = signalStore(
           const file = store.selectedFile();
           if (!file || !store.canSummarize()) return of(null);
 
-          patchState(store, { 
-            isProcessing: true, 
-            error: null, 
+          patchState(store, {
+            isProcessing: true,
+            error: null,
             showError: false,
             processingStatus: 'Uploading file...',
-            progress: 0
+            progress: 0,
           });
 
           // Create summary options
@@ -258,12 +287,16 @@ export const SummaryStore = signalStore(
             tap(() => {
               const currentProgress = store.progress();
               patchState(store, { progress: currentProgress + 10 });
-              
+
               if (currentProgress > 30) {
-                patchState(store, { processingStatus: 'Processing document...' });
+                patchState(store, {
+                  processingStatus: 'Processing document...',
+                });
               }
               if (currentProgress > 60) {
-                patchState(store, { processingStatus: 'Generating summary...' });
+                patchState(store, {
+                  processingStatus: 'Generating summary...',
+                });
               }
             })
           );
@@ -328,7 +361,7 @@ export const SummaryStore = signalStore(
 
       clearError(): void {
         patchState(store, { error: null, showError: false });
-      }
+      },
     };
   })
 );

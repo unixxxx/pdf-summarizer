@@ -1,6 +1,7 @@
 """Summarization router following FastAPI best practices."""
 
 from typing import Optional
+from uuid import UUID
 
 from fastapi import (
     APIRouter,
@@ -13,7 +14,7 @@ from fastapi import (
 )
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..auth.dependencies import CurrentUser
+from ..auth.dependencies import CurrentUserDep
 from ..common.exceptions import NotFoundError, SummarizationError
 from ..database.session import get_db
 from ..document.dependencies import DocumentServiceDep
@@ -59,7 +60,7 @@ router = APIRouter(
 )
 async def create_summary(
     request: CreateSummaryRequest,
-    current_user: CurrentUser,
+    current_user: CurrentUserDep,
     orchestrator: SummarizationOrchestratorDep,
     llm_factory: LLMFactoryDep,
     db: AsyncSession = Depends(get_db),
@@ -191,7 +192,7 @@ async def create_summary(
     },
 )
 async def upload_and_summarize(
-    current_user: CurrentUser,
+    current_user: CurrentUserDep,
     orchestrator: SummarizationOrchestratorDep,
     document_service: DocumentServiceDep,
     storage_service: StorageServiceDep,
@@ -353,6 +354,44 @@ async def upload_and_summarize(
         )
 
 
+@router.delete(
+    "/{summary_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Delete summary",
+    description="Delete a summary (keeps the document)",
+)
+async def delete_summary(
+    summary_id: UUID,
+    current_user: CurrentUserDep,
+    db: AsyncSession = Depends(get_db),
+) -> None:
+    """Delete a summary while keeping the document."""
+    # Import locally to avoid circular imports
+    from sqlalchemy import select
+
+    from ..database.models import Document, Summary
+    
+    # Verify ownership
+    result = await db.execute(
+        select(Summary)
+        .join(Document, Summary.document_id == Document.id)
+        .where(
+            Summary.id == summary_id,
+            Document.user_id == current_user.id,
+        )
+    )
+    summary = result.scalar_one_or_none()
+    
+    if not summary:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Summary not found",
+        )
+    
+    await db.delete(summary)
+    await db.commit()
+
+
 @router.get(
     "/info",
     summary="Get summarization service info",
@@ -362,7 +401,7 @@ async def upload_and_summarize(
     },
 )
 async def get_service_info(
-    current_user: CurrentUser,  # noqa: ARG001 - Required for authentication
+    current_user: CurrentUserDep,  # noqa: ARG001 - Required for authentication
     summary_service: SummaryServiceDep,
     llm_factory: LLMFactoryDep,
 ) -> dict:

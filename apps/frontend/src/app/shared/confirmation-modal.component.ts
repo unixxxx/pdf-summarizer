@@ -1,22 +1,45 @@
-import { Component, Input, Output, EventEmitter } from '@angular/core';
+import { Component, input, output } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { trigger, style, transition, animate } from '@angular/animations';
 
 @Component({
   selector: 'app-confirmation-modal',
   standalone: true,
   imports: [CommonModule],
+  animations: [
+    trigger('backdrop', [
+      transition(':enter', [
+        style({ opacity: 0 }),
+        animate('200ms ease-out', style({ opacity: 1 }))
+      ]),
+      transition(':leave', [
+        animate('150ms ease-in', style({ opacity: 0 }))
+      ])
+    ]),
+    trigger('modal', [
+      transition(':enter', [
+        style({ opacity: 0, transform: 'scale(0.9) translateY(20px)' }),
+        animate('300ms cubic-bezier(0.4, 0, 0.2, 1)', style({ opacity: 1, transform: 'scale(1) translateY(0)' }))
+      ]),
+      transition(':leave', [
+        animate('200ms cubic-bezier(0.4, 0, 0.2, 1)', style({ opacity: 0, transform: 'scale(0.95) translateY(10px)' }))
+      ])
+    ])
+  ],
   template: `
-    @if (isOpen) {
+    @if (isOpen()) {
       <div class="fixed inset-0 z-50 overflow-y-auto" aria-labelledby="modal-title" role="dialog" aria-modal="true">
         <div class="flex items-center justify-center min-h-screen p-4 text-center sm:p-0">
-          <div class="fixed inset-0 bg-background/80 backdrop-blur-sm transition-opacity animate-fade-in"
+          <div @backdrop 
+               class="fixed inset-0 bg-background/80 backdrop-blur-sm"
                (click)="onCancel()"
                (keydown.escape)="onCancel()"
                tabindex="0"
                role="button"
                aria-label="Close modal"></div>
           
-          <div class="relative inline-block align-bottom glass rounded-2xl text-left overflow-hidden shadow-2xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full animate-scale-in">
+          <div @modal 
+               class="relative inline-block align-bottom glass rounded-2xl text-left overflow-hidden shadow-2xl transform sm:my-8 sm:align-middle sm:max-w-lg sm:w-full">
             <div class="p-6 sm:p-8">
               <div class="flex items-start gap-4">
                 <div class="flex-shrink-0">
@@ -28,10 +51,10 @@ import { CommonModule } from '@angular/common';
                 </div>
                 <div class="flex-1">
                   <h3 class="text-lg font-semibold text-foreground mb-2" id="modal-title">
-                    {{ title }}
+                    {{ title() }}
                   </h3>
                   <p class="text-muted-foreground">
-                    {{ message }}
+                    {{ message() }}
                   </p>
                 </div>
               </div>
@@ -39,11 +62,11 @@ import { CommonModule } from '@angular/common';
               <div class="mt-6 flex flex-col-reverse sm:flex-row sm:justify-end gap-3">
                 <button (click)="onCancel()"
                         class="w-full sm:w-auto px-5 py-2.5 rounded-xl font-medium text-foreground bg-muted/50 hover:bg-muted transition-all">
-                  {{ cancelText }}
+                  {{ cancelText() }}
                 </button>
                 <button (click)="onConfirm()"
                         class="w-full sm:w-auto px-5 py-2.5 rounded-xl font-medium text-white bg-error hover:bg-error/90 shadow-lg hover:shadow-xl transform hover:scale-[1.02] transition-all">
-                  {{ confirmText }}
+                  {{ confirmText() }}
                 </button>
               </div>
             </div>
@@ -55,14 +78,16 @@ import { CommonModule } from '@angular/common';
   styles: []
 })
 export class ConfirmationModalComponent {
-  @Input() isOpen = false;
-  @Input() title = 'Confirm Action';
-  @Input() message = 'Are you sure you want to proceed?';
-  @Input() confirmText = 'Confirm';
-  @Input() cancelText = 'Cancel';
+  // Input signals
+  isOpen = input(false);
+  title = input('Confirm Action');
+  message = input('Are you sure you want to proceed?');
+  confirmText = input('Confirm');
+  cancelText = input('Cancel');
   
-  @Output() confirmed = new EventEmitter<void>();
-  @Output() cancelled = new EventEmitter<void>();
+  // Output signals
+  confirmed = output<void>();
+  cancelled = output<void>();
   
   onConfirm() {
     this.confirmed.emit();

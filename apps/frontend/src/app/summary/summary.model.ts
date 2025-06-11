@@ -1,3 +1,5 @@
+import { Tag } from '../library/tags/tag.model';
+
 // DTO interfaces for API responses
 export interface SummaryDto {
   id: string;
@@ -110,25 +112,6 @@ export class Summary {
   }
 }
 
-/**
- * Domain model for Tag value object
- */
-export class Tag {
-  constructor(
-    public readonly id: string,
-    public readonly name: string,
-    public readonly slug: string,
-    public readonly color?: string,
-    public readonly documentCount?: number
-  ) {}
-
-  /**
-   * Create from API response
-   */
-  static fromDto(dto: TagDto): Tag {
-    return new Tag(dto.id, dto.name, dto.slug, dto.color, dto.document_count);
-  }
-}
 
 /**
  * Value object for summary options

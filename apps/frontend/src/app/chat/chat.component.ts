@@ -12,6 +12,7 @@ import {
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router, RouterModule } from '@angular/router';
+import { trigger, style, transition, animate, query, stagger } from '@angular/animations';
 // import { ChatMessage } from '../core/domain/models/chat.model';
 import { ChatStore } from './chat.store';
 import { ConfirmationModalComponent } from '../shared/confirmation-modal.component';
@@ -39,10 +40,44 @@ interface ChatMessageDisplay {
     ConfirmationModalComponent,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
+  animations: [
+    trigger('messageAnimation', [
+      transition(':enter', [
+        style({ opacity: 0, transform: 'translateY(20px)' }),
+        animate('300ms cubic-bezier(0.4, 0, 0.2, 1)', style({ opacity: 1, transform: 'translateY(0)' }))
+      ])
+    ]),
+    trigger('fadeScaleIn', [
+      transition(':enter', [
+        style({ transform: 'scale(0.95)', opacity: 0 }),
+        animate('300ms cubic-bezier(0.4, 0, 0.2, 1)', style({ transform: 'scale(1)', opacity: 1 }))
+      ]),
+      transition(':leave', [
+        animate('300ms cubic-bezier(0.4, 0, 0.2, 1)', style({ transform: 'scale(0.95)', opacity: 0 }))
+      ])
+    ]),
+    trigger('fadeIn', [
+      transition(':enter', [
+        style({ opacity: 0 }),
+        animate('200ms ease-in', style({ opacity: 1 }))
+      ])
+    ]),
+    trigger('listAnimation', [
+      transition('* => *', [
+        query(':enter', [
+          style({ opacity: 0, transform: 'translateY(10px)' }),
+          stagger(30, [
+            animate('200ms ease-out', style({ opacity: 1, transform: 'translateY(0)' }))
+          ])
+        ], { optional: true })
+      ])
+    ])
+  ],
   template: `
     <div class="max-w-7xl mx-auto h-[calc(100vh-5rem)] flex">
       <!-- Sidebar -->
       <div
+        @fadeScaleIn
         class="w-80 border-r border-border/50 flex-col bg-background/50 hidden sm:flex"
       >
         <div class="p-4 border-b border-border/50">
@@ -67,7 +102,7 @@ interface ChatMessageDisplay {
           </button>
         </div>
 
-        <div class="flex-1 overflow-y-auto">
+        <div class="flex-1 overflow-y-auto" [@listAnimation]="sessions().length">
           @if (isLoadingSessions()) {
           <div class="p-4 text-center text-muted-foreground">
             <div class="inline-flex items-center">
@@ -95,8 +130,9 @@ interface ChatMessageDisplay {
             <p class="text-sm">No chat sessions yet</p>
             <p class="text-xs mt-1">Upload a PDF to start chatting</p>
           </div>
-          } @else { @for (session of sessions(); track session.id) {
+          } @else { @for (session of sessions(); track session.id; let i = $index) {
           <button
+            [style.animation-delay.ms]="i * 30"
             (click)="selectChat(session.id)"
             [class.bg-muted]="selectedChatId() === session.id"
             class="w-full p-4 text-left hover:bg-muted/50 transition-colors border-b border-border/30 group"
@@ -174,7 +210,7 @@ interface ChatMessageDisplay {
         <!-- Messages -->
         <div #messagesContainer class="flex-1 overflow-y-auto p-4 space-y-4">
           @for (msg of displayMessages(); track msg.id) {
-          <div [class.justify-end]="msg.isUser" class="flex">
+          <div @messageAnimation [class.justify-end]="msg.isUser" class="flex">
             <div
               [ngClass]="{
                 'bg-primary-100 dark:bg-primary-900/30': msg.isUser,
@@ -283,7 +319,7 @@ interface ChatMessageDisplay {
             </div>
           </div>
           } @if (isTyping()) {
-          <div class="flex">
+          <div @messageAnimation class="flex">
             <div class="glass rounded-xl p-4 max-w-[80%]">
               <div class="flex items-center gap-3">
                 <div
@@ -357,7 +393,7 @@ interface ChatMessageDisplay {
         </div>
         } @else {
         <!-- Empty State -->
-        <div class="flex-1 flex items-center justify-center p-8">
+        <div @fadeIn class="flex-1 flex items-center justify-center p-8">
           <div class="text-center max-w-md">
             <div
               class="inline-flex items-center justify-center w-20 h-20 rounded-full bg-gradient-to-br from-primary-100 to-accent-100 dark:from-primary-900/30 dark:to-accent-900/30 mb-4"
@@ -431,6 +467,7 @@ interface ChatMessageDisplay {
       <!-- Mobile Sidebar Overlay -->
       @if (showMobileSidebar()) {
       <div
+        @fadeIn
         class="fixed inset-0 bg-black/50 sm:hidden z-40"
         (click)="toggleMobileSidebar()"
         (keydown.escape)="toggleMobileSidebar()"
@@ -439,6 +476,7 @@ interface ChatMessageDisplay {
         aria-label="Close sidebar"
       ></div>
       <div
+        @fadeScaleIn
         class="fixed left-0 top-0 h-full w-80 bg-background shadow-xl sm:hidden z-50"
       >
         <!-- Copy of sidebar content here for mobile -->

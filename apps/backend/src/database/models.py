@@ -16,7 +16,7 @@ from sqlalchemy import (
     func,
 )
 from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import backref, relationship
 
 from .session import Base
 
@@ -26,6 +26,15 @@ document_tags = Table(
     Base.metadata,
     Column('document_id', UUID(as_uuid=True), ForeignKey('documents.id', ondelete='CASCADE'), primary_key=True),
     Column('tag_id', UUID(as_uuid=True), ForeignKey('tags.id', ondelete='CASCADE'), primary_key=True),
+    Column('created_at', DateTime, nullable=False, default=func.now())
+)
+
+# Association table for many-to-many relationship between documents and folders
+document_folders = Table(
+    'document_folders',
+    Base.metadata,
+    Column('document_id', UUID(as_uuid=True), ForeignKey('documents.id', ondelete='CASCADE'), primary_key=True),
+    Column('folder_id', UUID(as_uuid=True), ForeignKey('folders.id', ondelete='CASCADE'), primary_key=True),
     Column('created_at', DateTime, nullable=False, default=func.now())
 )
 
@@ -54,6 +63,7 @@ class User(Base):
         "Summary", back_populates="user", cascade="all, delete-orphan"
     )
     chats = relationship("Chat", back_populates="user", cascade="all, delete-orphan")
+    folders = relationship("Folder", back_populates="user", cascade="all, delete-orphan")
 
     __table_args__ = (
         UniqueConstraint("provider", "provider_id", name="_provider_user_uc"),
@@ -75,6 +85,7 @@ class Document(Base):
     extracted_text = Column(Text, nullable=True)
     word_count = Column(Integer, nullable=True)
     created_at = Column(DateTime, nullable=False, default=func.now(), index=True)  # Index for sorting
+    deleted_at = Column(DateTime, nullable=True, index=True)  # Soft delete timestamp
 
     # Relationships
     user = relationship("User", back_populates="documents")
@@ -89,6 +100,9 @@ class Document(Base):
     )
     tags = relationship(
         "Tag", secondary=document_tags, back_populates="documents"
+    )
+    folders = relationship(
+        "Folder", secondary=document_folders, back_populates="documents"
     )
 
 
@@ -186,4 +200,37 @@ class Tag(Base):
     # Relationships
     documents = relationship(
         "Document", secondary=document_tags, back_populates="tags"
+    )
+
+
+class Folder(Base):
+    """Folder model for organizing documents."""
+
+    __tablename__ = "folders"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
+    name = Column(String(255), nullable=False)
+    description = Column(Text, nullable=True)
+    color = Column(String(7), nullable=True)  # Hex color code
+    parent_id = Column(UUID(as_uuid=True), ForeignKey("folders.id"), nullable=True)
+    created_at = Column(DateTime, nullable=False, default=func.now())
+    updated_at = Column(
+        DateTime, nullable=False, default=func.now(), onupdate=func.now()
+    )
+    deleted_at = Column(DateTime, nullable=True, index=True)  # Soft delete timestamp
+
+    # Relationships
+    user = relationship("User", back_populates="folders")
+    documents = relationship(
+        "Document", secondary=document_folders, back_populates="folders"
+    )
+    parent = relationship(
+        "Folder", 
+        remote_side=[id], 
+        backref=backref("children", cascade="all, delete-orphan")
+    )
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "name", "parent_id", name="_user_folder_name_uc"),
     )

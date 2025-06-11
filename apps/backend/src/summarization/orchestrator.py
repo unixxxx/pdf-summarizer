@@ -7,9 +7,10 @@ from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..database.models import Document, Summary
-from ..document.document_service import DocumentService
-from ..library.tag_service import TagGenerationRequest, TagService
-from .summary_service import SummaryService
+from ..document.service import DocumentService
+from ..tag.schemas import TagGenerationRequestInternal
+from ..tag.service import TagService
+from .service import SummaryService
 
 logger = logging.getLogger(__name__)
 
@@ -142,7 +143,7 @@ class SummarizationOrchestrator:
         )
         
         # Generate and assign tags
-        tag_request = TagGenerationRequest(
+        tag_request = TagGenerationRequestInternal(
             content=text,
             filename=document.filename,
             max_tags=5,

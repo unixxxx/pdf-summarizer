@@ -2,6 +2,7 @@ import { Component, inject, computed, ChangeDetectionStrategy } from '@angular/c
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
+import { trigger, style, transition, animate, query, stagger } from '@angular/animations';
 import { SummaryStore } from '../summary.store';
 import { SummaryStyle } from '../summary.model';
 import { formatFileSize } from '../../shared/utils/formatters/file-size.formatter';
@@ -11,9 +12,39 @@ import { formatFileSize } from '../../shared/utils/formatters/file-size.formatte
   standalone: true,
   imports: [CommonModule, FormsModule],
   changeDetection: ChangeDetectionStrategy.OnPush,
+  animations: [
+    trigger('fadeIn', [
+      transition(':enter', [
+        style({ opacity: 0, transform: 'translateY(20px)' }),
+        animate('500ms cubic-bezier(0.4, 0, 0.2, 1)', style({ opacity: 1, transform: 'translateY(0)' }))
+      ])
+    ]),
+    trigger('fadeScaleIn', [
+      transition(':enter', [
+        style({ transform: 'scale(0.95)', opacity: 0 }),
+        animate('400ms cubic-bezier(0.4, 0, 0.2, 1)', style({ transform: 'scale(1)', opacity: 1 }))
+      ])
+    ]),
+    trigger('scaleIn', [
+      transition(':enter', [
+        style({ transform: 'scale(0.9)', opacity: 0 }),
+        animate('300ms cubic-bezier(0.4, 0, 0.2, 1)', style({ transform: 'scale(1)', opacity: 1 }))
+      ])
+    ]),
+    trigger('staggerAnimation', [
+      transition('* => *', [
+        query(':enter', [
+          style({ opacity: 0, transform: 'translateY(10px)' }),
+          stagger(50, [
+            animate('300ms ease-out', style({ opacity: 1, transform: 'translateY(0)' }))
+          ])
+        ], { optional: true })
+      ])
+    ])
+  ],
   template: `
-    <div class="max-w-7xl mx-auto py-8 px-4 sm:px-6 lg:px-8 animate-fade-in">
-      <div class="text-center mb-8">
+    <div class="max-w-7xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
+      <div @fadeIn class="text-center mb-8">
         <h1 class="text-3xl sm:text-4xl font-bold text-foreground mb-4">
           AI Document Summarizer
         </h1>
@@ -24,7 +55,7 @@ import { formatFileSize } from '../../shared/utils/formatters/file-size.formatte
       </div>
 
       <!-- Input Mode Selector -->
-      <div class="flex justify-center mb-8">
+      <div @scaleIn class="flex justify-center mb-8">
         <div class="inline-flex rounded-xl bg-muted p-1">
           <button
             (click)="summaryStore.setInputMode('text')"
@@ -81,7 +112,7 @@ import { formatFileSize } from '../../shared/utils/formatters/file-size.formatte
         <div class="lg:col-span-2 space-y-6">
           <!-- Text Input -->
           @if (inputMode() === 'text') {
-          <div class="glass rounded-2xl p-6">
+          <div @fadeScaleIn class="glass rounded-2xl p-6">
             <label
               for="text-input"
               class="block text-sm font-medium text-foreground mb-2"
@@ -113,6 +144,7 @@ import { formatFileSize } from '../../shared/utils/formatters/file-size.formatte
           <!-- File Upload -->
           @if (inputMode() === 'file') {
           <div
+            @fadeScaleIn
             class="glass rounded-2xl p-8 text-center hover:shadow-xl transition-all duration-300"
             (drop)="onDrop($event)"
             (dragover)="onDragOver($event)"
@@ -199,7 +231,7 @@ import { formatFileSize } from '../../shared/utils/formatters/file-size.formatte
 
           <!-- Example Templates (for text mode) -->
           @if (inputMode() === 'text' && !inputText()) {
-          <div class="glass rounded-xl p-4">
+          <div @fadeIn class="glass rounded-xl p-4">
             <h3 class="text-sm font-medium text-foreground mb-3">
               Try an example:
             </h3>
@@ -220,7 +252,7 @@ import { formatFileSize } from '../../shared/utils/formatters/file-size.formatte
         <!-- Options Section -->
         <div class="space-y-6">
           <!-- Summary Options -->
-          <div class="glass rounded-xl p-6">
+          <div @fadeIn class="glass rounded-xl p-6">
             <h3 class="text-lg font-semibold text-foreground mb-4">
               Summary Options
             </h3>
@@ -346,7 +378,7 @@ import { formatFileSize } from '../../shared/utils/formatters/file-size.formatte
 
       <!-- Processing State -->
       @if (processing()) {
-      <div class="glass rounded-2xl p-12 text-center">
+      <div @scaleIn class="glass rounded-2xl p-12 text-center">
         <div class="mx-auto w-20 h-20 relative mb-6">
           <div
             class="absolute inset-0 rounded-full border-4 border-muted animate-pulse-soft"
@@ -377,7 +409,7 @@ import { formatFileSize } from '../../shared/utils/formatters/file-size.formatte
 
       <!-- Success State -->
       @if (success() && summary()) {
-      <div class="space-y-6 animate-fade-in">
+      <div @fadeIn class="space-y-6">
         <div class="glass rounded-2xl p-6 sm:p-8">
           <div class="flex items-center justify-between mb-6">
             <h2 class="text-2xl font-bold text-foreground">
@@ -520,7 +552,7 @@ import { formatFileSize } from '../../shared/utils/formatters/file-size.formatte
 
       <!-- Error State -->
       @if (error()) {
-      <div class="glass rounded-2xl p-8 text-center border border-error/20">
+      <div @scaleIn class="glass rounded-2xl p-8 text-center border border-error/20">
         <div
           class="mx-auto w-20 h-20 rounded-full bg-error/10 flex items-center justify-center mb-6"
         >

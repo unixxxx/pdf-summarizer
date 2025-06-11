@@ -1,17 +1,40 @@
-import { Component, inject } from '@angular/core';
+import { Component, inject, ChangeDetectionStrategy } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { RouterModule } from '@angular/router';
-import { trigger, style, transition, animate } from '@angular/animations';
+import { RouterModule, RouterOutlet } from '@angular/router';
+import { trigger, style, transition, animate, query } from '@angular/animations';
 import { AuthStore } from '../auth/auth.store';
 import { ThemeStore } from '../shared/theme.store';
 import { UIStore } from '../shared/ui.store';
 import { NotificationsComponent } from '../shared/notifications.component';
 import { GlobalLoadingComponent } from '../shared/global-loading.component';
 
+const routeAnimations = trigger('routeAnimations', [
+  transition('* <=> *', [
+    query(':enter, :leave', [
+      style({
+        position: 'absolute',
+        left: 0,
+        width: '100%',
+        opacity: 0,
+        transform: 'scale(0.95) translateY(20px)',
+      }),
+    ], { optional: true }),
+    query(':enter', [
+      animate('400ms cubic-bezier(0.4, 0, 0.2, 1)', 
+        style({ 
+          opacity: 1, 
+          transform: 'scale(1) translateY(0)' 
+        })
+      ),
+    ], { optional: true })
+  ]),
+]);
+
 @Component({
   selector: 'app-layout',
   standalone: true,
-  imports: [CommonModule, RouterModule, NotificationsComponent, GlobalLoadingComponent],
+  imports: [CommonModule, RouterModule, RouterOutlet, NotificationsComponent, GlobalLoadingComponent],
+  changeDetection: ChangeDetectionStrategy.OnPush,
   animations: [
     trigger('slideInOut', [
       transition(':enter', [
@@ -22,10 +45,11 @@ import { GlobalLoadingComponent } from '../shared/global-loading.component';
         animate('200ms ease-in', style({ height: 0, opacity: 0 })),
       ]),
     ]),
+    routeAnimations
   ],
   template: `
-    <div class="min-h-screen bg-background transition-theme gradient-mesh">
-      <nav class="glass sticky top-0 z-50 border-b border-border/50">
+    <div class="h-screen flex flex-col bg-background transition-theme gradient-mesh overflow-hidden">
+      <nav class="glass flex-shrink-0 z-50 border-b border-border/50">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div class="flex justify-between h-16">
             <div class="flex">
@@ -359,8 +383,10 @@ import { GlobalLoadingComponent } from '../shared/global-loading.component';
         </div>
       </nav>
 
-      <main class="animate-fade-in">
-        <router-outlet></router-outlet>
+      <main class="relative flex-1 overflow-hidden">
+        <div [@routeAnimations]="prepareRoute(outlet) || 'none'" class="h-full">
+          <router-outlet #outlet="outlet"></router-outlet>
+        </div>
       </main>
 
       <!-- Global UI Components -->
@@ -393,5 +419,9 @@ export class LayoutComponent {
 
   logout() {
     this.authStore.logout(undefined);
+  }
+
+  prepareRoute(outlet: RouterOutlet) {
+    return outlet?.activatedRouteData?.['animation'];
   }
 }

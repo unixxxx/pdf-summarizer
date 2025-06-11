@@ -1,1 +1,0 @@
-"""Library domain module for document organization and discovery."""

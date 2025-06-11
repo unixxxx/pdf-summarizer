@@ -7,7 +7,7 @@ from fastapi import Depends
 from ..common.dependencies import LLMFactoryDep
 from ..common.exceptions import ServiceUnavailableError
 from ..config import Settings, get_settings
-from .embeddings_service import EmbeddingsService
+from .service import EmbeddingsService
 
 # Cache the embeddings service
 _embeddings_service: EmbeddingsService | None = None

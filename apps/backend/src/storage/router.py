@@ -7,7 +7,7 @@ from fastapi.responses import Response
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..auth.dependencies import CurrentUser
+from ..auth.dependencies import CurrentUserDep
 from ..config import Settings, get_settings
 from ..database.models import Document
 from ..database.session import get_db
@@ -31,7 +31,7 @@ router = APIRouter(
 async def download_document(
     document_id: UUID,
     storage_service: StorageServiceDep,
-    current_user: CurrentUser,
+    current_user: CurrentUserDep,
     settings: Settings = Depends(get_settings),
     db: AsyncSession = Depends(get_db),
 ):
@@ -104,7 +104,7 @@ async def download_document(
 )
 async def download_text_document(
     document_id: UUID,
-    current_user: CurrentUser,
+    current_user: CurrentUserDep,
     db: AsyncSession = Depends(get_db),
 ):
     """Download a text document as a .txt file."""
@@ -154,7 +154,7 @@ async def download_text_document(
 async def get_file(
     storage_path: str,
     storage_service: StorageServiceDep,
-    current_user: CurrentUser,
+    current_user: CurrentUserDep,
     settings: Settings = Depends(get_settings),
 ) -> Response:
     """Get a file from local storage."""

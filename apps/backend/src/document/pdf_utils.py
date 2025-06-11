@@ -1,11 +1,14 @@
 """PDF text extraction utilities."""
 
 import io
+import logging
 from typing import Any
 
 import PyPDF2
 
 from ..common.exceptions import PDFProcessingError
+
+logger = logging.getLogger(__name__)
 
 
 async def extract_text_from_pdf(pdf_content: bytes) -> dict[str, Any]:
@@ -48,7 +51,7 @@ async def extract_text_from_pdf(pdf_content: bytes) -> dict[str, Any]:
                     text_parts.append(page_text)
             except Exception as e:
                 # Log but continue with other pages
-                print(f"Warning: Failed to extract text from page {page_num + 1}: {e}")
+                logger.warning(f"Failed to extract text from page {page_num + 1}: {e}")
         
         if not text_parts:
             raise PDFProcessingError("No text content could be extracted from the PDF")

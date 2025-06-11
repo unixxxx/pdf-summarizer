@@ -21,23 +21,25 @@ export const routes: Routes = [
           import('./summary/summarize/summarize.component').then(
             (m) => m.SummarizeComponent
           ),
+        data: { animation: 'summarize' }
       },
       {
         path: 'library',
-        loadComponent: () =>
-          import('./documents/library/library.component').then(
-            (m) => m.LibraryComponent
-          ),
+        loadChildren: () =>
+          import('./library/library.routes').then((m) => m.libraryRoutes),
+        data: { animation: 'library' }
       },
       {
         path: 'chat',
         loadComponent: () =>
           import('./chat/chat.component').then((m) => m.ChatComponent),
+        data: { animation: 'chat' }
       },
       {
         path: 'chat/:chatId',
         loadComponent: () =>
           import('./chat/chat.component').then((m) => m.ChatComponent),
+        data: { animation: 'chat' }
       },
     ],
   },

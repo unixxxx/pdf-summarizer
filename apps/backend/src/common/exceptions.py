@@ -121,3 +121,33 @@ class StorageError(PDFSummarizerException):
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Storage error: {detail}",
         )
+
+
+class BadRequestException(PDFSummarizerException):
+    """Raised when request is invalid."""
+
+    def __init__(self, detail: str):
+        super().__init__(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=detail,
+        )
+
+
+class ConflictException(PDFSummarizerException):
+    """Raised when there's a conflict with existing resource."""
+
+    def __init__(self, detail: str):
+        super().__init__(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=detail,
+        )
+
+
+class NotFoundException(PDFSummarizerException):
+    """Raised when a resource is not found."""
+
+    def __init__(self, detail: str):
+        super().__init__(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=detail,
+        )

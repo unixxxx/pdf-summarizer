@@ -5,7 +5,7 @@ from typing import Annotated
 from fastapi import Depends
 
 from ..config import Settings, get_settings
-from .document_service import DocumentService
+from .service import DocumentService
 
 
 def get_document_service(

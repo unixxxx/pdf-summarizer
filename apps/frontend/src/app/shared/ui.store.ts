@@ -21,6 +21,7 @@ interface UIState {
   globalError: string | null;
   notifications: Notification[];
   mobileMenuOpen: boolean;
+  sidebarCollapsed: boolean;
 }
 
 const initialState: UIState = {
@@ -29,6 +30,7 @@ const initialState: UIState = {
   globalError: null,
   notifications: [],
   mobileMenuOpen: false,
+  sidebarCollapsed: false,
 };
 
 export const UIStore = signalStore(
@@ -131,6 +133,15 @@ export const UIStore = signalStore(
 
     closeMobileMenu(): void {
       patchState(store, { mobileMenuOpen: false });
+    },
+
+    // Sidebar
+    toggleSidebar(): void {
+      patchState(store, { sidebarCollapsed: !store.sidebarCollapsed() });
+    },
+
+    setSidebarCollapsed(collapsed: boolean): void {
+      patchState(store, { sidebarCollapsed: collapsed });
     },
 
     // Utility methods

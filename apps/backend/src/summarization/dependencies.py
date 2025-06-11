@@ -9,9 +9,9 @@ from ..common.dependencies import LLMFactoryDep
 from ..common.exceptions import ServiceUnavailableError
 from ..config import Settings, get_settings
 from ..document.dependencies import DocumentServiceDep
-from ..library.dependencies import TagServiceDep
+from ..tag.dependencies import TagServiceDep
 from .orchestrator import SummarizationOrchestrator
-from .summary_service import SummaryService
+from .service import SummaryService
 
 
 def get_llm(
