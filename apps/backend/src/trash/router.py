@@ -5,6 +5,8 @@ from fastapi import APIRouter, HTTPException, status
 from ..auth.dependencies import CurrentUserDep
 from .dependencies import TrashServiceDep
 from .schemas import (
+    DeleteDocumentsRequest,
+    DeleteFolderRequest,
     EmptyTrashRequest,
     RestoreDocumentRequest,
     RestoreFolderRequest,
@@ -68,6 +70,38 @@ async def restore_documents(
     """Restore documents from trash."""
     try:
         await trash_service.restore_documents(current_user, request)
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+
+
+@router.delete("/documents", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_documents_permanently(
+    request: DeleteDocumentsRequest,
+    current_user: CurrentUserDep,
+    trash_service: TrashServiceDep,
+) -> None:
+    """Permanently delete specific documents from trash."""
+    try:
+        await trash_service.delete_documents_permanently(current_user, request)
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+
+
+@router.delete("/folder", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_folder_permanently(
+    request: DeleteFolderRequest,
+    current_user: CurrentUserDep,
+    trash_service: TrashServiceDep,
+) -> None:
+    """Permanently delete a specific folder from trash."""
+    try:
+        await trash_service.delete_folder_permanently(current_user, request)
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,

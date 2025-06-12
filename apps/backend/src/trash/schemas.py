@@ -76,3 +76,18 @@ class EmptyTrashRequest(BaseModel):
     
     confirm: bool = True
     delete_all: bool = False  # If false, only delete items older than 30 days
+
+
+class DeleteDocumentsRequest(BaseModel):
+    """Request to permanently delete specific documents."""
+    
+    document_ids: list[UUID]
+    confirm: bool = True
+
+
+class DeleteFolderRequest(BaseModel):
+    """Request to permanently delete a specific folder."""
+    
+    folder_id: UUID
+    delete_children: bool = True
+    confirm: bool = True

@@ -1,6 +1,7 @@
 """Service for managing trash functionality."""
 
 import contextlib
+import logging
 from datetime import datetime, timedelta
 from typing import Optional
 from uuid import UUID
@@ -10,9 +11,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from ..common.exceptions import BadRequestException, NotFoundException
-from ..database.models import Document, Folder, User, document_folders
+from ..database.models import Document, Folder, User
 from ..storage.service import StorageService
 from .schemas import (
+    DeleteDocumentsRequest,
+    DeleteFolderRequest,
     EmptyTrashRequest,
     RestoreDocumentRequest,
     RestoreFolderRequest,
@@ -20,6 +23,8 @@ from .schemas import (
     TrashedFolderWithChildren,
     TrashStats,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class TrashService:
@@ -97,13 +102,30 @@ class TrashService:
         )
 
     async def get_trashed_documents(self, user: User) -> list[TrashedDocument]:
-        """Get all trashed documents for a user."""
+        """Get all trashed documents that are NOT in trashed folders."""
+        # First get all document IDs that are in trashed folders
+        folder_doc_query = (
+            select(Document.id)
+            .join(Folder, Document.folder_id == Folder.id)
+            .where(
+                and_(
+                    Document.user_id == user.id,
+                    Document.deleted_at.isnot(None),
+                    Folder.deleted_at.isnot(None)  # Folder is also deleted
+                )
+            )
+        )
+        folder_doc_result = await self.db.execute(folder_doc_query)
+        docs_in_deleted_folders = {row[0] for row in folder_doc_result}
+        
+        # Now get all trashed documents excluding those in deleted folders
         query = (
             select(Document)
             .where(
                 and_(
                     Document.user_id == user.id,
-                    Document.deleted_at.isnot(None)
+                    Document.deleted_at.isnot(None),
+                    Document.id.notin_(docs_in_deleted_folders) if docs_in_deleted_folders else True
                 )
             )
             .order_by(Document.deleted_at.desc())
@@ -113,19 +135,20 @@ class TrashService:
 
         trashed_docs = []
         for doc in documents:
-            # Get the folder it was in (if any)
-            folder_query = (
-                select(Folder)
-                .join(document_folders)
-                .where(
-                    and_(
-                        document_folders.c.document_id == doc.id,
-                        Folder.deleted_at.is_(None)  # Only non-deleted folders
+            # Get the folder it was in (if any) - should be non-deleted folder
+            folder = None
+            if doc.folder_id:
+                folder_query = (
+                    select(Folder)
+                    .where(
+                        and_(
+                            Folder.id == doc.folder_id,
+                            Folder.deleted_at.is_(None)  # Only non-deleted folders
+                        )
                     )
                 )
-            )
-            folder_result = await self.db.execute(folder_query)
-            folder = folder_result.scalar_one_or_none()
+                folder_result = await self.db.execute(folder_query)
+                folder = folder_result.scalar_one_or_none()
 
             trashed_docs.append(TrashedDocument(
                 id=doc.id,
@@ -142,7 +165,7 @@ class TrashService:
 
     async def get_trashed_folders(self, user: User) -> list[TrashedFolderWithChildren]:
         """Get all trashed folders in a tree structure."""
-        # Get all trashed folders
+        # Get all trashed folders first
         query = (
             select(Folder)
             .where(
@@ -151,20 +174,30 @@ class TrashService:
                     Folder.deleted_at.isnot(None)
                 )
             )
-            .options(selectinload(Folder.children), selectinload(Folder.documents))
+            .options(
+                selectinload(Folder.children),
+                selectinload(Folder.documents)
+            )
             .order_by(Folder.deleted_at.desc())
         )
         result = await self.db.execute(query)
-        folders = result.scalars().all()
+        folders = result.scalars().unique().all()
+        
+        # Create a map of all folders for easy lookup
+        all_folders_map = {f.id: f for f in folders}
 
         # Build tree structure of trashed folders
         folder_map = {}
         roots = []
-
+        
+        # First pass: create all folder objects
         for folder in folders:
-            # Count documents and children
-            doc_count = len([d for d in folder.documents if d.deleted_at == folder.deleted_at])
-            children_count = len([c for c in folder.children if c.deleted_at == folder.deleted_at])
+            # For nested folders, we need to ensure documents are loaded
+            # Count only direct documents and children for display
+            doc_count = len([d for d in folder.documents if d.deleted_at is not None])
+            # Count only deleted children
+            deleted_children = [c for c in folder.children if c.deleted_at is not None and c.id in all_folders_map]
+            children_count = len(deleted_children)
 
             # Get parent name if parent exists and is not deleted
             parent_name = None
@@ -196,30 +229,34 @@ class TrashService:
 
             folder_map[folder.id] = (folder, trashed_folder)
 
-            # If parent is not in trash or doesn't exist, it's a root
+        # Second pass: build hierarchy and populate documents
+        for _folder_id, (folder, trashed_folder) in folder_map.items():
+            # Add to root if parent is not deleted
             if not folder.parent_id or folder.parent_id not in folder_map:
                 roots.append(trashed_folder)
-
-        # Build hierarchy
-        for _folder_id, (folder, trashed_folder) in folder_map.items():
-            if folder.parent_id and folder.parent_id in folder_map:
-                parent_trashed = folder_map[folder.parent_id][1]
-                parent_trashed.children.append(trashed_folder)
-                # Remove from roots if it was added there
-                if trashed_folder in roots:
-                    roots.remove(trashed_folder)
-
-            # Add documents that were deleted with this folder
+            
+            # Add all deleted documents that belong to this folder
             for doc in folder.documents:
-                if doc.deleted_at == folder.deleted_at:
+                if doc.deleted_at is not None:  # Include all deleted documents
                     trashed_folder.documents.append(TrashedDocument(
                         id=doc.id,
                         name=doc.filename,
                         deleted_at=doc.deleted_at,
                         user_id=doc.user_id,
                         file_size=doc.file_size,
-                        page_count=doc.page_count
+                        page_count=doc.page_count,
+                        folder_id=folder.id,
+                        folder_name=folder.name
                     ))
+        
+        # Third pass: connect children to parents
+        for _folder_id, (folder, trashed_folder) in folder_map.items():
+            if folder.parent_id and folder.parent_id in folder_map:
+                parent_trashed = folder_map[folder.parent_id][1]
+                parent_trashed.children.append(trashed_folder)
+                # Remove from roots if it was mistakenly added
+                if trashed_folder in roots:
+                    roots.remove(trashed_folder)
 
         return roots
 
@@ -299,8 +336,10 @@ class TrashService:
         # Restore documents
         for doc in documents:
             doc.deleted_at = None
+            # Reset folder_id, will be set below if valid
+            doc.folder_id = None
 
-        # Add to folder if specified
+        # Add to folder if specified and valid
         if request.folder_id:
             folder_query = select(Folder).where(
                 and_(
@@ -313,19 +352,105 @@ class TrashService:
             folder = folder_result.scalar_one_or_none()
 
             if not folder:
-                raise NotFoundException("Target folder not found")
-
-            # Remove documents from all folders first
-            delete_stmt = document_folders.delete().where(
-                document_folders.c.document_id.in_(request.document_ids)
-            )
-            await self.db.execute(delete_stmt)
-
-            # Add to target folder
-            for doc in documents:
-                folder.documents.append(doc)
+                # If target folder is deleted or doesn't exist, restore to root
+                # This is a graceful fallback instead of raising an error
+                logger.warning(f"Target folder {request.folder_id} not found or deleted, restoring documents to root")
+            else:
+                # Add to target folder
+                for doc in documents:
+                    doc.folder_id = request.folder_id
 
         await self.db.commit()
+
+    async def delete_documents_permanently(self, user: User, request: DeleteDocumentsRequest) -> None:
+        """Permanently delete specific documents from trash."""
+        if not request.confirm:
+            raise BadRequestException("Confirmation required to delete documents permanently")
+
+        # Get documents
+        query = select(Document).where(
+            and_(
+                Document.id.in_(request.document_ids),
+                Document.user_id == user.id,
+                Document.deleted_at.isnot(None)
+            )
+        )
+        result = await self.db.execute(query)
+        documents = result.scalars().all()
+
+        if len(documents) != len(request.document_ids):
+            raise NotFoundException("One or more documents not found in trash")
+
+        # Delete physical files and documents
+        for doc in documents:
+            if self.storage_service and doc.storage_path:
+                with contextlib.suppress(Exception):
+                    await self.storage_service.delete_file(doc.storage_path)
+            await self.db.delete(doc)
+
+        await self.db.commit()
+
+    async def delete_folder_permanently(self, user: User, request: DeleteFolderRequest) -> None:
+        """Permanently delete a specific folder from trash."""
+        if not request.confirm:
+            raise BadRequestException("Confirmation required to delete folder permanently")
+
+        # Get the folder
+        query = select(Folder).where(
+            and_(
+                Folder.id == request.folder_id,
+                Folder.user_id == user.id,
+                Folder.deleted_at.isnot(None)
+            )
+        )
+        result = await self.db.execute(query)
+        folder = result.scalar_one_or_none()
+
+        if not folder:
+            raise NotFoundException("Folder not found in trash")
+
+        if request.delete_children:
+            # Delete all descendants
+            await self._delete_folder_descendants_permanently(folder.id, folder.deleted_at)
+
+        # Delete the folder itself
+        await self.db.delete(folder)
+        await self.db.commit()
+
+    async def _delete_folder_descendants_permanently(self, folder_id: UUID, deleted_at: datetime) -> None:
+        """Recursively delete folder descendants permanently."""
+        # Delete child folders
+        child_query = select(Folder).where(
+            and_(
+                Folder.parent_id == folder_id,
+                Folder.deleted_at == deleted_at
+            )
+        )
+        child_result = await self.db.execute(child_query)
+        children = child_result.scalars().all()
+
+        for child in children:
+            await self._delete_folder_descendants_permanently(child.id, deleted_at)
+            await self.db.delete(child)
+
+        # Delete documents in this folder
+        doc_query = (
+            select(Document)
+            .where(
+                and_(
+                    Document.folder_id == folder_id,
+                    Document.deleted_at == deleted_at
+                )
+            )
+        )
+        doc_result = await self.db.execute(doc_query)
+        documents = doc_result.scalars().all()
+
+        for doc in documents:
+            if self.storage_service and doc.storage_path:
+                with contextlib.suppress(Exception):
+                    await self.storage_service.delete_file(doc.storage_path)
+            await self.db.delete(doc)
 
     async def empty_trash(self, user: User, request: EmptyTrashRequest) -> None:
         """Empty the trash, permanently deleting items."""
@@ -394,10 +519,9 @@ class TrashService:
         # Restore documents in this folder
         doc_query = (
             select(Document)
-            .join(document_folders)
             .where(
                 and_(
-                    document_folders.c.folder_id == folder_id,
+                    Document.folder_id == folder_id,
                     Document.deleted_at == deleted_at
                 )
             )

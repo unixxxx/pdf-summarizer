@@ -36,6 +36,17 @@ interface EmptyTrashApiRequest {
   delete_all: boolean;
 }
 
+interface DeleteDocumentsApiRequest {
+  document_ids: string[];
+  confirm: boolean;
+}
+
+interface DeleteFolderApiRequest {
+  folder_id: string;
+  delete_children: boolean;
+  confirm: boolean;
+}
+
 export interface TrashState {
   stats: TrashStats | null;
   trashedFolders: TrashedFolderWithChildren[];
@@ -56,23 +67,26 @@ export const TrashStore = signalStore(
   { providedIn: 'root' },
   withState(initialState),
   withComputed((store) => ({
-    isEmpty: computed(() => 
-      store.trashedFolders().length === 0 && store.trashedDocuments().length === 0
+    isEmpty: computed(
+      () =>
+        store.trashedFolders().length === 0 &&
+        store.trashedDocuments().length === 0
     ),
-    hasContent: computed(() => 
-      store.trashedFolders().length > 0 || store.trashedDocuments().length > 0
+    hasContent: computed(
+      () =>
+        store.trashedFolders().length > 0 || store.trashedDocuments().length > 0
     ),
     canEmpty: computed(() => {
       const stats = store.stats();
       return stats && (stats.total_documents > 0 || stats.total_folders > 0);
     }),
   })),
-  
+
   withMethods((store) => {
     const trashService = inject(TrashService);
     const uiStore = inject(UIStore);
     const libraryStore = inject(LibraryStore);
-    
+
     const methods = {
       // Load trash content
       loadTrashContent: rxMethod<void>(
@@ -82,7 +96,7 @@ export const TrashStore = signalStore(
             forkJoin({
               stats: trashService.getTrashStats(),
               folders: trashService.getTrashedFolders(),
-              documents: trashService.getTrashedDocuments()
+              documents: trashService.getTrashedDocuments(),
             }).pipe(
               tapResponse({
                 next: ({ stats, folders, documents }) => {
@@ -106,7 +120,7 @@ export const TrashStore = signalStore(
           )
         )
       ),
-      
+
       // Restore folder
       restoreFolder: rxMethod<TrashedFolderWithChildren>(
         switchMap((folder) => {
@@ -115,7 +129,7 @@ export const TrashStore = signalStore(
             restore_children: true,
             new_parent_id: null,
           };
-          
+
           return trashService.restoreFolder(request).pipe(
             tapResponse({
               next: () => {
@@ -130,19 +144,21 @@ export const TrashStore = signalStore(
           );
         })
       ),
-      
+
       // Restore document
       restoreDocument: rxMethod<TrashedDocument>(
         switchMap((doc) => {
+          // Don't send folder_id if the document is being restored from a deleted folder
+          // It will be restored to root level instead
           const request: RestoreDocumentApiRequest = {
             document_ids: [doc.id],
-            folder_id: doc.folder_id,
+            folder_id: null, // Always restore to root for now
           };
-          
+
           return trashService.restoreDocuments(request).pipe(
             tapResponse({
               next: () => {
-                uiStore.showSuccess(`Document "${doc.name}" restored`);
+                uiStore.showSuccess(`Document "${doc.name}" restored to root`);
                 // Reload trash content
                 methods.loadTrashContent();
                 // Reload library documents
@@ -153,7 +169,7 @@ export const TrashStore = signalStore(
           );
         })
       ),
-      
+
       // Empty trash
       emptyTrash: rxMethod<void>(
         switchMap(() => {
@@ -161,7 +177,7 @@ export const TrashStore = signalStore(
             confirm: true,
             delete_all: true,
           };
-          
+
           return trashService.emptyTrash(request).pipe(
             tapResponse({
               next: () => {
@@ -174,8 +190,57 @@ export const TrashStore = signalStore(
           );
         })
       ),
+
+      // Delete document permanently
+      deleteDocument: rxMethod<TrashedDocument>(
+        switchMap((doc) => {
+          const request: DeleteDocumentsApiRequest = {
+            document_ids: [doc.id],
+            confirm: true,
+          };
+
+          return trashService.deleteDocuments(request).pipe(
+            tapResponse({
+              next: () => {
+                uiStore.showSuccess(`Document "${doc.name}" permanently deleted`);
+                // Reload trash content
+                methods.loadTrashContent();
+              },
+              error: (error: Error) => {
+                console.error('Delete document error:', error);
+                uiStore.showError('Failed to delete document');
+              },
+            })
+          );
+        })
+      ),
+
+      // Delete folder permanently
+      deleteFolder: rxMethod<TrashedFolderWithChildren>(
+        switchMap((folder) => {
+          const request: DeleteFolderApiRequest = {
+            folder_id: folder.id,
+            delete_children: true,
+            confirm: true,
+          };
+
+          return trashService.deleteFolder(request).pipe(
+            tapResponse({
+              next: () => {
+                uiStore.showSuccess(`Folder "${folder.name}" permanently deleted`);
+                // Reload trash content
+                methods.loadTrashContent();
+              },
+              error: (error: Error) => {
+                console.error('Delete folder error:', error);
+                uiStore.showError('Failed to delete folder');
+              },
+            })
+          );
+        })
+      ),
     };
-    
+
     return methods;
   })
 );

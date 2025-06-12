@@ -40,4 +40,18 @@ export class TrashService {
   emptyTrash(request: any): Observable<void> {
     return this.http.post<void>(`${this.apiUrl}/empty`, request);
   }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  deleteDocuments(request: any): Observable<void> {
+    return this.http.delete<void>(`${this.apiUrl}/documents`, {
+      body: request,
+    });
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  deleteFolder(request: any): Observable<void> {
+    return this.http.delete<void>(`${this.apiUrl}/folder`, {
+      body: request,
+    });
+  }
 }
