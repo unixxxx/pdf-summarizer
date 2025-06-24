@@ -2,11 +2,14 @@ import { Injectable, inject } from '@angular/core';
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { Observable } from 'rxjs';
 import { map } from 'rxjs/operators';
-import { Document, DocumentDto, PaginatedLibraryResponse } from './document.model';
+import {
+  Document,
+  DocumentDto,
+  PaginatedLibraryResponse,
+} from './document.model';
 
 export interface DocumentSearchCriteria {
   searchQuery?: string;
-  tags?: string[];
   folderId?: string;
   unfiled?: boolean;
   limit?: number;
@@ -25,7 +28,9 @@ export class DocumentService {
   /**
    * Browse documents with summaries, search, and filtering
    */
-  browse(criteria?: DocumentSearchCriteria): Observable<PaginatedLibraryResponse> {
+  browse(
+    criteria?: DocumentSearchCriteria
+  ): Observable<PaginatedLibraryResponse> {
     const params = this.buildParams(criteria);
     return this.http.get<PaginatedLibraryResponse>(this.baseUrl, { params });
   }
@@ -72,18 +77,11 @@ export class DocumentService {
     });
   }
 
-
   private buildParams(criteria?: DocumentSearchCriteria): HttpParams {
     let params = new HttpParams();
 
     if (criteria?.searchQuery) {
       params = params.set('search', criteria.searchQuery);
-    }
-
-    if (criteria?.tags) {
-      criteria.tags.forEach((tag) => {
-        params = params.append('tags', tag);
-      });
     }
 
     if (criteria?.folderId) {

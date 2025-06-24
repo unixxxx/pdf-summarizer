@@ -14,8 +14,7 @@ _embeddings_service: EmbeddingsService | None = None
 
 
 def get_embeddings_service(
-    factory: LLMFactoryDep,
-    settings: Settings = Depends(get_settings),
+    factory: LLMFactoryDep, settings: Settings = Depends(get_settings),
 ) -> EmbeddingsService:
     """Get embeddings service instance."""
     global _embeddings_service
@@ -23,7 +22,10 @@ def get_embeddings_service(
     if _embeddings_service is None:
         try:
             _embeddings_service = EmbeddingsService(settings, factory)
-        except Exception:
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Failed to initialize embeddings service: {str(e)}")
             raise ServiceUnavailableError("Embeddings")
     
     return _embeddings_service

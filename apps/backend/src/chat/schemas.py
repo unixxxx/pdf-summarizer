@@ -1,7 +1,7 @@
 """Schemas for chat operations."""
 
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any
 from uuid import UUID
 
 from pydantic import BaseModel, Field, field_validator
@@ -11,7 +11,7 @@ class CreateChatRequest(BaseModel):
     """Request to create a new chat session."""
     
     document_id: UUID = Field(description="ID of the document to chat with")
-    title: Optional[str] = Field(
+    title: str | None = Field(
         default=None,
         description="Optional title for the chat session",
         max_length=255,
@@ -49,7 +49,7 @@ class ChatMessageResponse(BaseModel):
     chat_id: UUID
     role: str
     content: str
-    message_metadata: Optional[dict[str, Any]] = None
+    message_metadata: dict[str, Any] | None = None
     created_at: datetime
     
     class Config:
@@ -75,7 +75,7 @@ class ChatListItem(BaseModel):
     document_id: UUID
     document_filename: str
     title: str
-    last_message: Optional[str] = None
+    last_message: str | None = None
     message_count: int = 0
     created_at: datetime
     updated_at: datetime

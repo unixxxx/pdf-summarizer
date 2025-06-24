@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is a PDF Summarizer monorepo built with Nx, containing:
+This is DocuLearn - a document learning platform monorepo built with Nx, containing:
 
 - **Frontend**: Angular 19 with Tailwind CSS
 - **Backend**: FastAPI with LangChain integration
@@ -131,6 +131,8 @@ Optional:
 
 1. **Infrastructure**: Start PostgreSQL with `docker-compose up -d postgres`
 2. **Database**: Run migrations with `cd apps/backend && uv run alembic upgrade head`
+   - For new deployments, see `apps/backend/alembic/versions/README.md`
+   - For migration management, see `apps/backend/docs/MIGRATION_STRATEGY.md`
 3. **Environment**: Copy `.env.example` to `.env` and configure
 4. **Dependencies**: Install with `pnpm install && npx nx install backend`
 5. **Development**: Start with `npx nx run-many -t serve`
@@ -164,8 +166,63 @@ The application requires OAuth configuration:
 ## Memories
 
 - Always use TailwindCSS 4 when working with styles or design related files
-- don't add co-author to the commit messages
+- don't add co-author section to the git commit messages
 - Always aim for production grade quality
 - don't run the app, ask me to do it whenever necessary
 - Always ask for structured outputs when using LLMs and provide appropriate pydantic schemas
 - don't forget to await async expressions in python code
+
+## Recent Backend Optimizations Completed
+
+### Phase 1: Critical Performance ✅
+
+- Added 10 comprehensive database indexes
+- Fixed N+1 query problems
+- Configured connection pooling (pool_size=20, max_overflow=40)
+- Implemented async I/O with aiofiles
+- Added timeouts for all external APIs
+- Implemented batch operations for bulk inserts
+
+### Phase 2: Stability & Resilience ✅
+
+- Redis caching with graceful degradation
+- Structured error handling hierarchy
+- Retry logic with exponential backoff using tenacity
+- pgvector HNSW indexes (created dynamically)
+- Background tasks with Celery and Redis broker
+- GZip compression middleware
+- Performance monitoring with metrics collection
+
+### Background Tasks Available
+
+- Document embedding generation
+- Tag embedding updates
+- Summary generation
+- Document exports
+- Orphaned file cleanup (hourly)
+
+### Monitoring Endpoints
+
+- `/api/v1/monitoring/metrics` - Performance metrics
+- `/api/v1/monitoring/health/detailed` - Detailed health status
+
+### Phase 3: Memory Optimization ✅
+
+- Streaming utilities for large file processing
+- OptimizedStorageService with S3 multipart upload
+- Chunked processing to avoid memory exhaustion
+- Streaming PDF text extraction
+- Batch processing with concurrency control
+
+## Pending Optimizations
+
+### Database Session Anti-pattern Fix
+
+- Some services still store DB session as instance variable
+- Need to refactor to use Unit of Work pattern or pass session to methods
+- FolderService and TrashService already refactored as examples
+
+### Migration Consolidation
+
+- Multiple migration files could be consolidated for cleaner deployment
+- See `apps/backend/MIGRATION_CONSOLIDATION_STRATEGY.md` for details

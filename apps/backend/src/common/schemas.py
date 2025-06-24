@@ -1,5 +1,4 @@
 from datetime import datetime
-from typing import Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -49,7 +48,7 @@ class ErrorResponse(BaseSchema):
     timestamp: datetime = Field(
         default_factory=datetime.utcnow, description="Error timestamp"
     )
-    path: Optional[str] = Field(None, description="Request path that caused the error")
+    path: str | None = Field(None, description="Request path that caused the error")
 
     model_config = ConfigDict(
         json_schema_extra={

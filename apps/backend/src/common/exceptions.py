@@ -1,70 +1,23 @@
-from typing import Any, Optional
+from typing import Any
 
 from fastapi import HTTPException, status
 
 
-class PDFSummarizerException(HTTPException):
-    """Base exception for PDF Summarizer API."""
+class DocuLearnException(HTTPException):
+    """Base exception for DocuLearn API."""
 
     def __init__(
         self,
         status_code: int,
         detail: str,
-        headers: Optional[dict[str, Any]] = None,
+        headers: dict[str, Any] | None = None,
     ):
         super().__init__(status_code=status_code, detail=detail, headers=headers)
 
 
-class PDFProcessingError(PDFSummarizerException):
-    """Raised when PDF processing fails."""
-
-    def __init__(self, detail: str = "Failed to process PDF file"):
-        super().__init__(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=detail
-        )
 
 
-class PDFTooLargeError(PDFSummarizerException):
-    """Raised when PDF exceeds size limits."""
-
-    def __init__(self, max_size_mb: int):
-        super().__init__(
-            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-            detail=f"PDF file exceeds maximum size of {max_size_mb}MB",
-        )
-
-
-class PDFTooManyPagesError(PDFSummarizerException):
-    """Raised when PDF has too many pages."""
-
-    def __init__(self, max_pages: int):
-        super().__init__(
-            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-            detail=f"PDF file exceeds maximum of {max_pages} pages",
-        )
-
-
-class InvalidFileTypeError(PDFSummarizerException):
-    """Raised when uploaded file is not a PDF."""
-
-    def __init__(self, file_type: str):
-        super().__init__(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Invalid file type: {file_type}. Only PDF files are allowed",
-        )
-
-
-class EmptyContentError(PDFSummarizerException):
-    """Raised when no text content is found."""
-
-    def __init__(self, source: str = "file"):
-        super().__init__(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"No text content found in {source}",
-        )
-
-
-class SummarizationError(PDFSummarizerException):
+class SummarizationError(DocuLearnException):
     """Raised when summarization fails."""
 
     def __init__(self, detail: str = "Failed to generate summary"):
@@ -73,7 +26,7 @@ class SummarizationError(PDFSummarizerException):
         )
 
 
-class OpenAIConfigError(PDFSummarizerException):
+class OpenAIConfigError(DocuLearnException):
     """Raised when OpenAI is not properly configured."""
 
     def __init__(self):
@@ -83,7 +36,7 @@ class OpenAIConfigError(PDFSummarizerException):
         )
 
 
-class ServiceUnavailableError(PDFSummarizerException):
+class ServiceUnavailableError(DocuLearnException):
     """Raised when a required service is unavailable."""
 
     def __init__(self, service: str):
@@ -93,27 +46,7 @@ class ServiceUnavailableError(PDFSummarizerException):
         )
 
 
-class NotFoundError(PDFSummarizerException):
-    """Raised when a resource is not found."""
-
-    def __init__(self, resource: str):
-        super().__init__(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"{resource} not found",
-        )
-
-
-class DuplicateResourceError(PDFSummarizerException):
-    """Raised when a duplicate resource is detected."""
-
-    def __init__(self, resource: str, identifier: str):
-        super().__init__(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=f"{resource} with identifier '{identifier}' already exists",
-        )
-
-
-class StorageError(PDFSummarizerException):
+class StorageError(DocuLearnException):
     """Raised when storage operations fail."""
 
     def __init__(self, detail: str):
@@ -123,7 +56,9 @@ class StorageError(PDFSummarizerException):
         )
 
 
-class BadRequestException(PDFSummarizerException):
+
+
+class BadRequestException(DocuLearnException):
     """Raised when request is invalid."""
 
     def __init__(self, detail: str):
@@ -133,7 +68,7 @@ class BadRequestException(PDFSummarizerException):
         )
 
 
-class ConflictException(PDFSummarizerException):
+class ConflictException(DocuLearnException):
     """Raised when there's a conflict with existing resource."""
 
     def __init__(self, detail: str):
@@ -143,7 +78,7 @@ class ConflictException(PDFSummarizerException):
         )
 
 
-class NotFoundException(PDFSummarizerException):
+class NotFoundException(DocuLearnException):
     """Raised when a resource is not found."""
 
     def __init__(self, detail: str):
@@ -151,3 +86,78 @@ class NotFoundException(PDFSummarizerException):
             status_code=status.HTTP_404_NOT_FOUND,
             detail=detail,
         )
+
+
+# Database-related exceptions
+class DatabaseError(DocuLearnException):
+    """Base class for database-related errors."""
+
+    def __init__(self, detail: str, status_code: int = status.HTTP_500_INTERNAL_SERVER_ERROR):
+        super().__init__(status_code=status_code, detail=f"Database error: {detail}")
+
+
+
+
+# External API exceptions
+class ExternalAPIError(DocuLearnException):
+    """Base class for external API errors."""
+
+    def __init__(self, service: str, detail: str, status_code: int = status.HTTP_502_BAD_GATEWAY):
+        super().__init__(
+            status_code=status_code,
+            detail=f"{service} API error: {detail}"
+        )
+
+
+class LLMError(ExternalAPIError):
+    """Raised when LLM API calls fail."""
+
+    def __init__(self, detail: str, provider: str | None = None):
+        service = f"LLM ({provider})" if provider else "LLM"
+        super().__init__(service=service, detail=detail)
+
+
+class EmbeddingError(ExternalAPIError):
+    """Raised when embedding generation fails."""
+
+    def __init__(self, detail: str):
+        super().__init__(service="Embedding", detail=detail)
+
+
+class OAuthError(ExternalAPIError):
+    """Raised when OAuth authentication fails."""
+
+    def __init__(self, provider: str, detail: str):
+        super().__init__(
+            service=f"OAuth ({provider})",
+            detail=detail,
+            status_code=status.HTTP_401_UNAUTHORIZED
+        )
+
+
+# Rate limiting and quota exceptions
+class RateLimitError(DocuLearnException):
+    """Raised when rate limit is exceeded."""
+
+    def __init__(self, retry_after: int | None = None):
+        headers = {"Retry-After": str(retry_after)} if retry_after else None
+        super().__init__(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Rate limit exceeded. Please try again later.",
+            headers=headers
+        )
+
+
+
+
+# Validation exceptions
+class ValidationError(DocuLearnException):
+    """Raised when input validation fails."""
+
+    def __init__(self, field: str, detail: str):
+        super().__init__(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Validation error for field '{field}': {detail}"
+        )
+
+

@@ -2,9 +2,10 @@
 
 import uuid
 from pathlib import Path
-from typing import Optional
 
 import aioboto3
+import aiofiles
+import aiofiles.os
 from botocore.exceptions import ClientError
 
 from ..common.exceptions import StorageError
@@ -35,7 +36,7 @@ class StorageService:
         content: bytes,
         user_id: str,
         file_type: str,
-        original_filename: Optional[str] = None,
+        original_filename: str | None = None,
     ) -> str:
         """
         Store a file and return its storage path.
@@ -90,9 +91,9 @@ class StorageService:
             storage_key = str(file_path.relative_to(self.local_path))
             
             try:
-                # Write file to local storage
-                with open(file_path, 'wb') as f:
-                    f.write(content)
+                # Write file to local storage asynchronously
+                async with aiofiles.open(file_path, 'wb') as f:
+                    await f.write(content)
                 return storage_key
                 
             except OSError as e:
@@ -135,8 +136,8 @@ class StorageService:
                 raise StorageError(f"File not found: {storage_key}")
             
             try:
-                with open(file_path, 'rb') as f:
-                    return f.read()
+                async with aiofiles.open(file_path, 'rb') as f:
+                    return await f.read()
             except OSError as e:
                 raise StorageError(f"Failed to read file locally: {str(e)}")
     
@@ -169,11 +170,11 @@ class StorageService:
             
             try:
                 if file_path.exists():
-                    file_path.unlink()
+                    await aiofiles.os.remove(str(file_path))
             except OSError as e:
                 raise StorageError(f"Failed to delete file locally: {str(e)}")
     
-    async def get_file_url(self, storage_key: str, expires_in: int = 3600, filename: Optional[str] = None) -> str:
+    async def get_file_url(self, storage_key: str, expires_in: int = 3600, filename: str | None = None) -> str:
         """
         Get a presigned URL for file access (S3 only).
         
@@ -244,7 +245,7 @@ class StorageService:
         self,
         text: str,
         user_id: str,
-        title: Optional[str] = None,
+        title: str | None = None,
     ) -> tuple[str, int]:
         """
         Store text content as a .txt file.
@@ -280,3 +281,58 @@ class StorageService:
         )
         
         return storage_key, len(content)
+    
+    async def create_presigned_post(
+        self,
+        key: str,
+        expires_in: int = 3600,
+        content_type: str | None = None,
+        max_size: int | None = None,
+    ) -> dict:
+        """
+        Generate a presigned POST URL for direct upload to S3.
+        
+        Args:
+            key: S3 key where the file will be uploaded
+            expires_in: URL expiration time in seconds
+            content_type: Optional content type restriction
+            max_size: Optional maximum file size in bytes
+            
+        Returns:
+            Dictionary with 'url' and 'fields' for the presigned POST
+            
+        Raises:
+            StorageError: If presigned POST generation fails or S3 is not enabled
+        """
+        if not self.is_s3:
+            raise StorageError("Presigned POST URLs are only available with S3 storage")
+        
+        try:
+            async with self.session.client(
+                's3',
+                endpoint_url=self.settings.s3_endpoint_url
+            ) as s3_client:
+                # Build conditions for the presigned POST
+                conditions = []
+                fields = {}
+                
+                if content_type:
+                    conditions.append({"Content-Type": content_type})
+                    fields["Content-Type"] = content_type
+                
+                if max_size:
+                    conditions.append(["content-length-range", 0, max_size])
+                
+                # Generate presigned POST
+                response = await s3_client.generate_presigned_post(
+                    Bucket=self.settings.s3_bucket_name,
+                    Key=key,
+                    Fields=fields,
+                    Conditions=conditions,
+                    ExpiresIn=expires_in
+                )
+                
+                return response
+                
+        except ClientError as e:
+            raise StorageError(f"Failed to generate presigned POST: {str(e)}")

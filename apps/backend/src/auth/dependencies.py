@@ -1,11 +1,13 @@
-from typing import Annotated, Optional
+from typing import Annotated
 
-from fastapi import Depends, HTTPException, Request, status
+from fastapi import Depends, HTTPException, Query, WebSocket, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ..common.cache_dependencies import CacheServiceDep
 from ..config import Settings, get_settings
 from ..database.session import get_db
+from .cached_user_service import CachedUserService
 from .jwt_service import JWTService
 from .oauth_service import OAuthService
 from .schemas import TokenData, User
@@ -13,34 +15,30 @@ from .user_service import UserService
 
 # Security scheme
 security = HTTPBearer(
-    scheme_name="JWT Bearer Token", description="JWT token obtained from OAuth2 login"
-)
-
-
-# Create singleton instances
-_jwt_service: Optional[JWTService] = None
-_oauth_service: Optional[OAuthService] = None
+    scheme_name="JWT Bearer Token", description="JWT token obtained from OAuth2 login")
 
 
 def get_jwt_service(settings: Settings = Depends(get_settings)) -> JWTService:
     """Get JWT service instance."""
-    global _jwt_service
-    if _jwt_service is None:
-        _jwt_service = JWTService(settings)
-    return _jwt_service
+    return JWTService(settings)
 
 
 def get_oauth_service(settings: Settings = Depends(get_settings)) -> OAuthService:
     """Get OAuth service instance."""
-    global _oauth_service
-    if _oauth_service is None:
-        _oauth_service = OAuthService(settings)
-    return _oauth_service
+    return OAuthService(settings)
 
 
-async def get_user_service(db: AsyncSession = Depends(get_db)) -> UserService:
+def get_user_service() -> UserService:
     """Get user service instance."""
-    return UserService(db)
+    return UserService()
+
+
+async def get_cached_user_service(
+    cache_service: CacheServiceDep = None,
+) -> CachedUserService:
+    """Get cached user service instance."""
+    user_service = UserService()
+    return CachedUserService(user_service, cache_service)
 
 
 async def get_current_user_token(
@@ -66,14 +64,16 @@ async def get_current_user_token(
 
 async def get_current_user(
     token_data: TokenData = Depends(get_current_user_token),
-    user_service: UserService = Depends(get_user_service),
+    cached_user_service: CachedUserService = Depends(get_cached_user_service),
+    db: AsyncSession = Depends(get_db),
 ) -> User:
     """
     Get the current authenticated user.
 
     Args:
         token_data: Decoded JWT token data
-        user_service: User service instance
+        cached_user_service: Cached user service instance
+        db: Database session
 
     Returns:
         Current user
@@ -81,7 +81,7 @@ async def get_current_user(
     Raises:
         HTTPException: If user not found
     """
-    user = await user_service.get_user(token_data.sub)
+    user = await cached_user_service.get_user(db, token_data.sub)
     if not user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
@@ -89,44 +89,40 @@ async def get_current_user(
     return user
 
 
-async def get_optional_user(
-    request: Request,
+async def get_current_user_ws(
+    websocket: WebSocket,
+    token: str = Query(..., alias="token"),
     jwt_service: JWTService = Depends(get_jwt_service),
-    user_service: UserService = Depends(get_user_service),
-) -> Optional[User]:
+    cached_user_service: CachedUserService = Depends(get_cached_user_service),
+    db: AsyncSession = Depends(get_db),
+) -> User | None:
     """
-    Get the current user if authenticated, None otherwise.
-
-    This dependency doesn't require authentication and won't raise
-    an exception if the user is not authenticated.
-
+    Get current user from WebSocket connection.
+    
+    WebSocket connections can't use Authorization headers, so we use query params.
+    
     Args:
-        request: FastAPI request
+        websocket: WebSocket connection
+        token: JWT token from query parameter
         jwt_service: JWT service instance
-        user_service: User service instance
-
+        cached_user_service: Cached user service instance
+        db: Database session
+        
     Returns:
         Current user if authenticated, None otherwise
     """
-    # Check for Authorization header
-    auth_header = request.headers.get("Authorization")
-    if not auth_header or not auth_header.startswith("Bearer "):
+    try:
+        # Decode token
+        token_data = jwt_service.decode_token(token)
+        
+        # Get user
+        user = await cached_user_service.get_user(db, token_data.sub)
+        return user
+    except HTTPException:
         return None
-
-    # Extract token
-    token = auth_header.split(" ")[1]
-
-    # Try to decode token
-    token_data = jwt_service.verify_token(token)
-    if not token_data:
+    except Exception:
         return None
-
-    # Get user
-    user = await user_service.get_user(token_data.sub)
-    return user
 
 
 # Type aliases for dependency injection
-CurrentUser = Annotated[User, Depends(get_current_user)]
 CurrentUserDep = Annotated[User, Depends(get_current_user)]  # New naming convention
-OptionalUser = Annotated[Optional[User], Depends(get_optional_user)]

@@ -1,5 +1,5 @@
 from datetime import datetime, timedelta, timezone
-from typing import Any, Optional
+from typing import Any
 
 from fastapi import HTTPException, status
 from jose import JWTError, jwt
@@ -96,21 +96,6 @@ class JWTService:
         token_data = {"sub": user_id, "email": email, "name": name}
         return self.create_access_token(token_data)
 
-    def verify_token(self, token: str) -> Optional[TokenData]:
-        """
-        Verify a token without raising exceptions.
-
-        Args:
-            token: JWT token to verify
-
-        Returns:
-            Token data if valid, None otherwise
-        """
-        try:
-            return self.decode_token(token)
-        except HTTPException:
-            return None
-    
     def create_token(self, user: User) -> Token:
         """
         Create a Token response for a user.

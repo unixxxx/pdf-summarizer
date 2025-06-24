@@ -1,21 +1,32 @@
-# PDF Summarizer
+# DocuLearn
 
-A modern, production-ready web application for summarizing PDF documents using AI, built with Angular 19, NgRx SignalStore, and FastAPI.
+Transform Documents into Knowledge - An intelligent document learning platform that helps you extract insights, generate study materials, and interact with your documents using AI.
 
-## Features
+## 🚀 Features
 
-- 📄 **PDF Upload & Processing** - Extract and process text from PDF files with automatic deduplication
-- 🤖 **AI-Powered Summarization** - Generate intelligent summaries using OpenAI or Ollama with customizable styles
+- 📄 **Universal Document Support** - Upload PDFs, create text documents, with more formats coming soon
+- 🧠 **AI-Powered Processing** - Automatic text extraction, embeddings, and intelligent analysis
 - 💬 **Interactive Chat** - Ask questions about your documents with context-aware AI responses
-- 🔐 **OAuth Authentication** - Secure sign-in with Google or GitHub
-- 📚 **Document Library** - Advanced search, filtering by tags, and document management
-- 🏷️ **Smart Tagging** - Automatic AI-generated tags for easy organization
-- 📥 **Export Options** - Download summaries in Markdown, PDF, or plain text formats
-- 🌓 **Dark Mode** - Full theme support with system preference detection
-- 🚀 **Modern Architecture** - Clean architecture with NgRx SignalStore state management
-- ☁️ **Cloud Ready** - S3-compatible storage support for scalability
+- 📝 **Smart Summarization** - Generate customizable summaries in multiple styles
+- ❓ **Quiz Generation** - Create quizzes from your documents for better retention
+- 🎴 **Flashcard Creation** - Generate flashcards for spaced repetition learning
+- 📊 **Real-time Progress** - Watch as your documents are processed with live status updates
+- 🏷️ **Smart Organization** - AI-generated tags and folder management
+- 🔐 **Secure Authentication** - OAuth with Google, Facebook or GitHub
+- 🌓 **Modern UI** - Beautiful interface with dark mode support
+- ☁️ **Cloud Ready** - Direct S3 uploads for scalability
 
-## Quick Start
+## 🎯 What Makes DocuLearn Different
+
+Unlike simple PDF summarizers, DocuLearn transforms any document into a comprehensive learning experience:
+
+1. **Library-First Approach** - Your document library is the home screen
+2. **Multiple Learning Modes** - Chat, summarize, quiz, flashcards, and more
+3. **Real-time Processing** - See exactly what's happening with your documents
+4. **No Forced Features** - Upload documents without mandatory summarization
+5. **Future-Ready** - Built for expansion with upcoming features like text-to-speech and collaborative study
+
+## 🚀 Quick Start
 
 ### Prerequisites
 
@@ -23,21 +34,23 @@ A modern, production-ready web application for summarizing PDF documents using A
 - Python 3.9+
 - Docker (for PostgreSQL)
 - Ollama (for local AI) or OpenAI API key
-- OAuth credentials (Google or GitHub)
+- OAuth credentials (Google, Facebook or GitHub)
 
 ### Setup Instructions
 
 1. **Install dependencies:**
+
    ```sh
    pnpm install
    npx nx install backend
    ```
 
 2. **Set up the database:**
+
    ```sh
    # Start PostgreSQL
    docker-compose up -d postgres
-   
+
    # Create database and run migrations
    cd apps/backend
    uv run python scripts/setup_db.py
@@ -46,49 +59,68 @@ A modern, production-ready web application for summarizing PDF documents using A
    ```
 
 3. **Set up Ollama (for local AI):**
+
    ```sh
    ./setup-ollama.sh
    ```
 
 4. **Configure environment:**
+
    ```sh
    cp apps/backend/.env.example apps/backend/.env
    # Edit .env file to add:
    # - JWT_SECRET_KEY (generate a secure value)
    # - OAuth credentials (see OAuth Setup section)
+   # - S3 configuration (optional)
    ```
 
 5. **Run the application:**
+
    ```sh
    npx nx run-many -t serve
    ```
 
-   The app will be available at:
+   DocuLearn will be available at:
+
    - Frontend: http://localhost:4200
    - Backend API: http://localhost:8000
    - API Docs: http://localhost:8000/docs
 
-### Using OpenAI
+## 🧠 AI Configuration
 
-1. Update `apps/backend/.env`:
-   ```env
-   LLM_PROVIDER=openai
-   OPENAI_API_KEY=your-api-key-here
-   ```
+### Using Ollama (Local AI)
 
-2. Follow steps 1, 3, and 4 from above.
+Default configuration uses Ollama with the `llama2` model. Other available models:
 
-## Available LLM Models
-
-### Ollama Models
-- `llama2` - Default, good for general summarization
 - `mistral` - Fast and efficient
 - `neural-chat` - Optimized for conversational tasks
 - `phi` - Lightweight model
 
-To change models, update `OLLAMA_MODEL` in `.env`.
+### Using OpenAI
 
-## Development
+Update `apps/backend/.env`:
+
+```env
+LLM_PROVIDER=openai
+OPENAI_API_KEY=your-api-key-here
+```
+
+## 📚 How It Works
+
+1. **Upload** - Drop your PDF or create a text document
+2. **Process** - Watch real-time progress as DocuLearn:
+   - Extracts text
+   - Generates embeddings
+   - Creates tags
+   - Prepares for interaction
+3. **Learn** - Choose how to interact:
+   - Chat with your document
+   - Generate summaries
+   - Create quizzes
+   - Make flashcards
+   - Export study materials
+
+## 🛠️ Development
 
 ### Common Commands
 
@@ -106,108 +138,118 @@ npx nx serve backend
 npx nx lint frontend
 npx nx lint backend
 
-# Format code
-npx nx format
-
 # Run tests
-npx nx test backend    # Frontend tests not configured yet
+npx nx test backend
 
 # Build for production
 npx nx build frontend
 npx nx build backend
 ```
 
-### Backend Commands
-
-```sh
-# Install/update Python dependencies
-npx nx install backend
-npx nx add backend <package-name>
-
-# Database migrations
-cd apps/backend
-uv run alembic upgrade head                              # Apply migrations
-uv run alembic revision --autogenerate -m "description"  # Create migration
-```
-
 ### Project Structure
 
 ```
-pdf-summarizer/
+doculearn/
 ├── apps/
 │   ├── frontend/               # Angular 19 application
 │   │   └── src/app/
-│   │       ├── auth/          # Authentication (store, guard, components)
-│   │       ├── chat/          # Chat feature with AI
-│   │       ├── documents/     # Document library and management
-│   │       ├── summary/       # Summarization features
-│   │       └── shared/        # Shared components and utilities
+│   │       ├── auth/          # Authentication
+│   │       ├── library/       # Document library (main screen)
+│   │       ├── chat/          # Document chat interface
+│   │       ├── quiz/          # Quiz generation
+│   │       ├── flashcards/    # Flashcard creation
+│   │       └── shared/        # Shared components
 │   └── backend/               # FastAPI application
 │       └── src/
-│           ├── auth/          # OAuth and JWT authentication
-│           ├── chat/          # Chat endpoints and AI integration
-│           ├── document/      # Document management and processing
-│           ├── library/       # Library browsing and search
-│           ├── storage/       # File storage abstraction
-│           └── summarization/ # AI summarization logic
-├── docker-compose.yml         # PostgreSQL and Ollama services
+│           ├── auth/          # OAuth and JWT
+│           ├── upload/        # S3 direct upload
+│           ├── processing/    # Document pipeline
+│           ├── quiz/          # Quiz generation
+│           └── flashcard/     # Flashcard service
+├── docker-compose.yml         # PostgreSQL and services
 └── nx.json                   # Nx monorepo configuration
 ```
 
-## OAuth Setup (Required)
+## 🔐 OAuth Setup (Required)
 
-The application requires OAuth authentication. Configure at least one provider:
+Configure at least one OAuth provider:
 
 ### Google OAuth
+
 1. Go to [Google Cloud Console](https://console.cloud.google.com/apis/credentials)
-2. Create a new project or select existing one
-3. Create OAuth 2.0 credentials (Web application)
-4. Add authorized redirect URI: `http://localhost:8000/api/v1/auth/callback`
-5. Copy credentials to `.env`:
+2. Create OAuth 2.0 credentials (Web application)
+3. Add authorized redirect URI: `http://localhost:8000/api/v1/auth/callback`
+4. Add to `.env`:
    ```env
    GOOGLE_CLIENT_ID=your-client-id
    GOOGLE_CLIENT_SECRET=your-client-secret
    ```
 
 ### GitHub OAuth
+
 1. Go to [GitHub Settings > Developer settings > OAuth Apps](https://github.com/settings/developers)
 2. Create a new OAuth App
 3. Set Authorization callback URL: `http://localhost:8000/api/v1/auth/callback`
-4. Copy credentials to `.env`:
+4. Add to `.env`:
    ```env
    GITHUB_CLIENT_ID=your-client-id
    GITHUB_CLIENT_SECRET=your-client-secret
    ```
 
-## Architecture
+## 🏗️ Architecture
 
 ### Frontend (Angular 19)
-- **State Management:** NgRx SignalStore with reactive state management
-- **Component Architecture:** Standalone components with signal-based reactivity
-- **Styling:** Tailwind CSS 4 with custom design system
-- **Type Safety:** Strict TypeScript with comprehensive interfaces
-- **Clean Architecture:** Components → Stores → Services pattern
+
+- **State Management:** NgRx SignalStore
+- **UI Framework:** Tailwind CSS 4
+- **Real-time Updates:** WebSocket/SSE
+- **Type Safety:** Strict TypeScript
 
 ### Backend (FastAPI)
-- **Async Architecture:** Full async/await support with asyncpg
-- **Domain-Driven Design:** Modular structure by business domain
-- **Validation:** Pydantic v2 for request/response validation
-- **Database:** PostgreSQL with pgvector for semantic search
-- **Storage:** Flexible storage with local filesystem and S3 support
 
-### AI/LLM Integration
-- **Framework:** LangChain for document processing and chat
-- **Providers:** OpenAI and Ollama with easy provider switching
-- **Features:** Streaming responses, context-aware chat, smart tagging
-- **Vector Search:** pgvector for semantic document search
+- **Async Architecture:** Full async/await
+- **Database:** PostgreSQL with pgvector
+- **Storage:** S3-compatible with direct upload
+- **Processing:** Background tasks with Celery
+- **AI Integration:** LangChain with multiple providers
 
-### Key Design Patterns
-- **Frontend State:** All state managed through NgRx SignalStore
-- **Backend Services:** Repository pattern with dependency injection
-- **Authentication:** JWT with OAuth2 flow (Google/GitHub)
-- **API Design:** RESTful with OpenAPI documentation
-- **Error Handling:** Centralized error handling on both frontend and backend
+### Key Features
 
-## License
+- **Direct S3 Upload:** Faster, more reliable uploads
+- **Real-time Progress:** WebSocket status updates
+- **Modular Services:** Clean separation of concerns
+- **Vector Search:** Semantic document search
+- **Extensible:** Built for future features
 
-MIT
+## 🚀 Roadmap
+
+### Current Release
+
+- ✅ Document upload and processing
+- ✅ Interactive chat
+- ✅ Smart summarization
+- ✅ Quiz generation
+- ✅ Flashcard creation
+
+### Coming Soon
+
+- 🎧 Text-to-speech
+- 📖 Distraction-free reading mode
+- 👥 Collaborative study groups
+- 📊 Learning analytics
+- 🔄 Spaced repetition system
+- 📱 Mobile app
+
+## 🤝 Contributing
+
+We welcome contributions! Please see our contributing guidelines for more information.
+
+## 📄 License
+
+MIT License - see LICENSE file for details
+
+---
+
+**DocuLearn** - Transform Documents into Knowledge 🚀
+
+Visit us at [doculearn.ai](https://doculearn.ai)

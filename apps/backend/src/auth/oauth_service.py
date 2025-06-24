@@ -1,13 +1,12 @@
-import secrets
-from typing import Optional
 from urllib.parse import urlencode, urlparse
 
 import httpx
-from authlib.integrations.starlette_client import OAuth
 from fastapi import HTTPException, status
 
+from ..common.exceptions import OAuthError
+from ..common.retry import retry_on_external_api
 from ..config import Settings
-from .schemas import UserCreate
+from .schemas import OAuthProvider, UserCreate
 
 
 class OAuthService:
@@ -15,42 +14,38 @@ class OAuthService:
 
     def __init__(self, settings: Settings):
         self.settings = settings
-        self.oauth = OAuth()
-        self._setup_providers()
 
-    def _setup_providers(self):
-        """Configure OAuth providers."""
-        # Configure Google OAuth2
-        if self.settings.google_oauth_enabled:
-            self.oauth.register(
-                name="google",
-                client_id=self.settings.google_client_id,
-                client_secret=self.settings.google_client_secret,
-                server_metadata_url=self.settings.google_openid_config_url,
-                client_kwargs={
-                    "scope": "openid email profile",
-                    "prompt": "select_account",
-                },
+    def validate_oauth_provider(self, provider: OAuthProvider) -> None:
+        """
+        Validate that the OAuth provider is supported and configured.
+        
+        Args:
+            provider: OAuth provider name to validate
+            
+        Raises:
+            HTTPException: If provider is not supported or not configured
+        """
+        # Check if provider is supported
+        if provider not in [OAuthProvider.GOOGLE, OAuthProvider.GITHUB]:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Unsupported provider: {provider}",
+            )
+        
+        # Check if provider is enabled
+        if provider == OAuthProvider.GOOGLE and not self.settings.google_oauth_enabled:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Google OAuth is not configured",
+            )
+        
+        if provider == OAuthProvider.GITHUB and not self.settings.github_oauth_enabled:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="GitHub OAuth is not configured",
             )
 
-        # Configure GitHub OAuth2
-        if self.settings.github_oauth_enabled:
-            self.oauth.register(
-                name="github",
-                client_id=self.settings.github_client_id,
-                client_secret=self.settings.github_client_secret,
-                authorize_url=self.settings.github_authorize_url,
-                access_token_url=self.settings.github_token_url,
-                client_kwargs={
-                    "scope": "user:email",
-                },
-            )
-
-    def generate_state(self) -> str:
-        """Generate a secure random state parameter."""
-        return secrets.token_urlsafe(32)
-
-    def validate_redirect_url(self, redirect_url: Optional[str]) -> str:
+    def validate_redirect_url(self, redirect_url: str | None) -> str:
         """
         Validate and return the redirect URL.
 
@@ -80,7 +75,7 @@ class OAuthService:
         return redirect_url
 
     async def get_authorization_url(
-        self, provider: str, state: str, redirect_url: str
+        self, provider: OAuthProvider, state: str, redirect_url: str
     ) -> str:
         """
         Get the OAuth authorization URL for a provider.
@@ -92,38 +87,25 @@ class OAuthService:
 
         Returns:
             Authorization URL
-
-        Raises:
-            HTTPException: If provider is not supported or not configured
         """
-        if provider == "google" and not self.settings.google_oauth_enabled:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Google OAuth is not configured",
-            )
-
-        if provider == "github" and not self.settings.github_oauth_enabled:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="GitHub OAuth is not configured",
-            )
-
-        if provider not in ["google", "github"]:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Unsupported OAuth provider: {provider}",
-            )
-
+        
         # Use the base redirect URI without query parameters for OAuth providers
         # The provider and redirect_url will be encoded in the state parameter
         callback_url = self.settings.oauth_redirect_uri
 
-        if provider == "google":
-            client = self.oauth.google
-            auth_data = await client.create_authorization_url(callback_url, state=state)
-            return auth_data["url"]
+        if provider == OAuthProvider.GOOGLE:
+            params = {
+                "client_id": self.settings.google_client_id,
+                "redirect_uri": callback_url,
+                "response_type": "code",
+                "scope": "openid email profile",
+                "state": state,
+                "access_type": "offline",
+                "prompt": "select_account",
+            }
+            return f"https://accounts.google.com/o/oauth2/v2/auth?{urlencode(params)}"
 
-        elif provider == "github":
+        elif provider == OAuthProvider.GITHUB:
             params = {
                 "client_id": self.settings.github_client_id,
                 "redirect_uri": callback_url,
@@ -131,8 +113,14 @@ class OAuthService:
                 "state": state,
             }
             return f"{self.settings.github_authorize_url}?{urlencode(params)}"
+        
+        # This should never happen if validate_oauth_provider is called first
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Unsupported OAuth provider: {provider}"
+        )
 
-    async def handle_callback(self, provider: str, code: str, state: str) -> UserCreate:
+    async def handle_callback(self, provider: OAuthProvider, code: str, state: str) -> UserCreate:
         """
         Handle OAuth callback and retrieve user information.
 
@@ -148,9 +136,9 @@ class OAuthService:
             HTTPException: If authentication fails
         """
         try:
-            if provider == "google":
+            if provider == OAuthProvider.GOOGLE:
                 return await self._handle_google_callback(code, state)
-            elif provider == "github":
+            elif provider == OAuthProvider.GITHUB:
                 return await self._handle_github_callback(code, state)
             else:
                 raise HTTPException(
@@ -158,14 +146,17 @@ class OAuthService:
                     detail=f"Unsupported OAuth provider: {provider}",
                 )
         except httpx.HTTPError as e:
-            raise HTTPException(
-                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail=f"Failed to communicate with OAuth provider: {str(e)}",
+            raise OAuthError(
+                provider=provider,
+                detail=f"Failed to communicate with OAuth provider: {str(e)}"
             )
 
+    @retry_on_external_api("google_oauth", max_attempts=3)
     async def _handle_google_callback(self, code: str, state: str) -> UserCreate:
-        """Handle Google OAuth callback."""
-        async with httpx.AsyncClient() as client:
+        """Handle Google OAuth callback with retry."""
+        # Configure timeout: 30s total, 10s connect
+        timeout = httpx.Timeout(30.0, connect=10.0)
+        async with httpx.AsyncClient(timeout=timeout) as client:
             # Exchange code for token
             # Use the exact same redirect URI that was used in the authorization request
             token_data = {
@@ -194,13 +185,16 @@ class OAuthService:
                 email=user_data["email"],
                 name=user_data["name"],
                 picture=user_data.get("picture"),
-                provider="google",
+                provider=OAuthProvider.GOOGLE,
                 provider_id=user_data["id"],
             )
 
+    @retry_on_external_api("github_oauth", max_attempts=3)
     async def _handle_github_callback(self, code: str, state: str) -> UserCreate:
-        """Handle GitHub OAuth callback."""
-        async with httpx.AsyncClient() as client:
+        """Handle GitHub OAuth callback with retry."""
+        # Configure timeout: 30s total, 10s connect
+        timeout = httpx.Timeout(30.0, connect=10.0)
+        async with httpx.AsyncClient(timeout=timeout) as client:
             # Exchange code for token
             token_data = {
                 "client_id": self.settings.github_client_id,
@@ -257,16 +251,6 @@ class OAuthService:
                 email=email,
                 name=user_data.get("name") or user_data["login"],
                 picture=user_data.get("avatar_url"),
-                provider="github",
+                provider=OAuthProvider.GITHUB,
                 provider_id=str(user_data["id"]),
             )
-    
-    async def get_user_info(self, provider: str, code: str, redirect_url: Optional[str] = None) -> UserCreate:
-        """
-        Alias for handle_callback for backward compatibility.
-        
-        Note: redirect_url parameter is ignored as it's not needed.
-        """
-        # Generate a dummy state since handle_callback expects it
-        state = self.generate_state()
-        return await self.handle_callback(provider, code, state)

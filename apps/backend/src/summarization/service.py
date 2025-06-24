@@ -1,21 +1,20 @@
 """Summarization service following DDD principles."""
 
 import logging
-import time
-from datetime import datetime
-from typing import Any, Optional
+from typing import Any
 from uuid import UUID
 
-from langchain.chains.summarize import load_summarize_chain
-from langchain.docstore.document import Document as LangchainDocument
+from langchain.output_parsers import PydanticOutputParser
+from langchain.prompts import PromptTemplate
 from langchain.schema.language_model import BaseLanguageModel
-from langchain.text_splitter import RecursiveCharacterTextSplitter
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..common.exceptions import SummarizationError
+from ..common.exceptions import LLMError
+from ..common.retry import retry_on_llm_error
 from ..database.models import Summary
-from .domain import SummaryOptions, SummaryResult
+from .llm_schemas import ComprehensiveDocumentAnalysis
+from .schemas import SummaryOptions
 
 logger = logging.getLogger(__name__)
 
@@ -23,67 +22,66 @@ logger = logging.getLogger(__name__)
 class SummaryService:
     """Service for generating and managing summaries."""
     
-    def __init__(
-        self, llm: BaseLanguageModel, chunk_size: int = 3000, chunk_overlap: int = 200
-    ):
+    def __init__(self, llm: BaseLanguageModel):
         self.llm = llm
-        self.text_splitter = RecursiveCharacterTextSplitter(
-            chunk_size=chunk_size,
-            chunk_overlap=chunk_overlap,
-            separators=["\n\n", "\n", ". ", " ", ""],
-        )
     
-    async def summarize_text(
+    
+    async def analyze_document(
         self,
         text: str,
-        options: Optional[dict[str, Any]] = None,
-    ) -> SummaryResult:
-        """Generate a summary for the given text."""
-        start_time = time.time()
+        options: SummaryOptions | None = None,
+    ) -> ComprehensiveDocumentAnalysis:
+        """Analyze document to generate summary, filename, and tags in a single LLM call."""
+        parser = PydanticOutputParser(pydantic_object=ComprehensiveDocumentAnalysis)
         
-        # Parse options
-        summary_options = self._parse_options(options)
+        # Create comprehensive prompt
+        template = f"""Analyze the following document and provide a JSON response.
+
+{options.prompt_modifier}
+
+Document: {{text}}
+
+IMPORTANT: You MUST respond with a valid JSON object that includes:
+- summary: A comprehensive summary of the document
+- title: A descriptive title using only letters and numbers (e.g., 'Neural network guide')
+- tags: An array of 3-8 relevant tags using only lowercase letters, numbers, and hyphens (e.g., 'machine-learning')
+
+Example response format:
+{{{{
+    "summary": "This document discusses...",
+    "title": "Example Title",
+    "tags": ["tag-one", "tag-two", "tag-three"]
+}}}}
+"""     
+        prompt = PromptTemplate(
+            template=template,
+            input_variables=["text"],
+            output_parser=parser
+        )
+        
+        # Create chain with structured output
+        chain = prompt | self.llm.with_structured_output(ComprehensiveDocumentAnalysis, method="json_schema")
+        
+        @retry_on_llm_error(max_attempts=3)
+        async def _invoke_llm():
+            try:
+                return await chain.ainvoke({"text": text})
+            except Exception as e:
+                logger.error(f"LLM invocation failed: {str(e)}")
+                raise LLMError(f"Failed to analyze document: {str(e)}")
         
         try:
-            # Split text into chunks
-            chunks = self.text_splitter.split_text(text)
-            docs = [LangchainDocument(page_content=chunk) for chunk in chunks]
-            
-            logger.info(f"Split text into {len(docs)} chunks for summarization")
-            
-            # Create summarization chain
-            chain = self._create_chain(summary_options)
-            
-            # Generate summary
-            # Try the newer ainvoke method first, fall back to arun for compatibility
-            try:
-                result = await chain.ainvoke({"input_documents": docs})
-                if isinstance(result, dict):
-                    result = result.get("output_text", "")
-            except (AttributeError, TypeError):
-                # Fallback for older langchain versions or Ollama compatibility
-                result = await chain.arun({"input_documents": docs})
-            
-            processing_time = time.time() - start_time
-            
-            # Create metadata
-            metadata = {
-                "chunks_processed": len(docs),
-                "total_chars": len(text),
-                "options": options or {},
-                "llm_type": getattr(self.llm, "_llm_type", "unknown"),
-                "model": getattr(self.llm, "model_name", getattr(self.llm, "model", "unknown")),
-            }
-            
-            return SummaryResult(
-                content=result,
-                processing_time=processing_time,
-                metadata=metadata,
+            # Generate comprehensive analysis with retry
+            return await _invoke_llm()
+        except (LLMError, Exception) as e:
+            logger.error(f"Structured analysis failed after retries: {str(e)}")
+            # Ultimate fallback
+            return ComprehensiveDocumentAnalysis(
+                summary="Failed to analyze document. Please try again.",
+                title="document",
+                tags=["unprocessed", "error", "retry"]
             )
-            
-        except Exception as e:
-            logger.error(f"Summarization failed: {str(e)}")
-            raise SummarizationError(f"Failed to generate summary: {str(e)}") from e
+    
     
     async def save_summary(
         self,
@@ -112,7 +110,6 @@ class SummaryService:
             processing_time=processing_time,
             llm_provider=llm_provider,
             llm_model=llm_model,
-            created_at=datetime.utcnow(),
         )
         
         db.add(summary)
@@ -121,64 +118,24 @@ class SummaryService:
         
         return summary
     
+    
     async def get_summary_for_document(
         self,
         document_id: UUID,
         db: AsyncSession,
-    ) -> Optional[Summary]:
+    ) -> Summary | None:
         """Get summary for a document if it exists."""
         result = await db.execute(
             select(Summary).where(Summary.document_id == document_id)
         )
         return result.scalar_one_or_none()
     
-    def get_service_info(self) -> dict[str, Any]:
-        """Get information about the summarization service configuration."""
+    def get_service_info(self) -> dict[str, str]:
+        """Get service information."""
         return {
-            "llm_type": getattr(self.llm, "_llm_type", "unknown"),
-            "chunk_size": self.text_splitter._chunk_size,
-            "chunk_overlap": self.text_splitter._chunk_overlap,
-            "separators": self.text_splitter._separators,
+            "service": "SummaryService",
+            "version": "1.0",
+            "llm_type": type(self.llm).__name__
         }
     
-    def _parse_options(self, options: Optional[dict[str, Any]]) -> SummaryOptions:
-        """Parse options dictionary into SummaryOptions."""
-        if not options:
-            return SummaryOptions()
-        
-        return SummaryOptions(
-            style=options.get("style", "balanced"),
-            max_length=options.get("max_length"),
-            focus_areas=options.get("focus_areas"),
-            custom_prompt=options.get("custom_prompt"),
-        )
     
-    def _create_chain(self, options: SummaryOptions):
-        """Create the appropriate summarization chain."""
-        # Get prompt modifier from options
-        modifier = options.to_prompt_modifier()
-        
-        # Create custom prompt if modifier exists
-        if modifier:
-            from langchain.prompts import PromptTemplate
-            
-            template = f"""Write a summary of the following text.
-{modifier}
-
-Text: {{text}}
-
-SUMMARY:"""
-            
-            prompt = PromptTemplate(template=template, input_variables=["text"])
-            
-            return load_summarize_chain(
-                llm=self.llm,
-                chain_type="stuff",
-                prompt=prompt,
-            )
-        
-        # Use default chain
-        return load_summarize_chain(
-            llm=self.llm,
-            chain_type="stuff",
-        )

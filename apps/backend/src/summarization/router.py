@@ -1,6 +1,5 @@
 """Summarization router following FastAPI best practices."""
 
-from typing import Optional
 from uuid import UUID
 
 from fastapi import (
@@ -15,10 +14,10 @@ from fastapi import (
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..auth.dependencies import CurrentUserDep
-from ..common.exceptions import NotFoundError, SummarizationError
+from ..common.exceptions import NotFoundException, SummarizationError
+from ..common.pdf_utils import extract_text_from_pdf
 from ..database.session import get_db
-from ..document.dependencies import DocumentServiceDep
-from ..document.pdf_utils import extract_text_from_pdf
+from ..library.document.dependencies import DocumentServiceDep
 from ..storage.dependencies import StorageServiceDep
 from .dependencies import (
     LLMFactoryDep,
@@ -28,6 +27,7 @@ from .dependencies import (
 from .schemas import (
     CreateSummaryRequest,
     DocumentInfoResponse,
+    SummaryOptions,
     SummaryResponse,
     SummaryStyle,
     TagResponse,
@@ -85,15 +85,8 @@ async def create_summary(
             detail="Filename is required when providing raw text",
         )
     
-    # Prepare options
-    options = {
-        "style": request.style.value,
-        "max_length": request.max_length,
-        "focus_areas": request.focus_areas,
-        "custom_prompt": request.custom_prompt,
-    }
-    # Remove None values
-    options = {k: v for k, v in options.items() if v is not None}
+    # Get summary options from request
+    options = request.get_summary_options()
     
     try:
         # Summarize based on input type
@@ -162,7 +155,7 @@ async def create_summary(
             llm_model=llm_info["model"],
         )
         
-    except NotFoundError:
+    except NotFoundException:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Document not found",
@@ -203,18 +196,18 @@ async def upload_and_summarize(
         SummaryStyle.BALANCED,
         description="Summary style"
     ),
-    max_length: Optional[int] = Form(
+    max_length: int | None = Form(
         None,
         description="Maximum length in words",
         ge=50,
         le=5000
     ),
-    focus_areas: Optional[str] = Form(
+    focus_areas: str | None = Form(
         None,
         description="Areas to focus on",
         max_length=500
     ),
-    custom_prompt: Optional[str] = Form(
+    custom_prompt: str | None = Form(
         None,
         description="Custom prompt modifier",
         max_length=1000
@@ -293,13 +286,12 @@ async def upload_and_summarize(
             await db.flush()
         
         # Prepare summarization options
-        options = {
-            "style": style.value,
-            "max_length": max_length,
-            "focus_areas": focus_areas,
-            "custom_prompt": custom_prompt,
-        }
-        options = {k: v for k, v in options.items() if v is not None}
+        options = SummaryOptions(
+            style=style.value,
+            custom_prompt=custom_prompt,
+            focus_areas=focus_areas,
+            max_length=max_length
+        )
         
         # Create summary
         summary = await orchestrator.summarize_document(

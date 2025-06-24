@@ -1,60 +1,78 @@
 import { Routes } from '@angular/router';
-import { authGuard } from './auth/auth.guard';
+import { authGuard } from './core/guards/auth.guard';
+import { loggedInGuard } from './core/guards/logged-in.guard';
+import { provideEffects } from '@ngrx/effects';
+import { provideState, Store } from '@ngrx/store';
+import { inject } from '@angular/core';
+import { TagActions } from './library/tag/store/tag.actions';
+import { FolderActions } from './library/folder/store/folder.actions';
+import { FolderEffects } from './library/folder/store/folder.effects';
+import { folderFeature } from './library/folder/store/folder.feature';
+import { tagFeature } from './library/tag/store/tag.feature';
+import { TagEffects } from './library/tag/store/tag.effects';
 
 export const routes: Routes = [
-  { path: '', redirectTo: '/login', pathMatch: 'full' },
   {
     path: 'login',
     loadComponent: () =>
-      import('./auth/login/login.component').then((m) => m.LoginComponent),
-  },
-  {
-    path: 'app',
-    loadComponent: () =>
-      import('./layout/layout.component').then((m) => m.LayoutComponent),
-    canActivate: [authGuard],
-    children: [
-      { path: '', redirectTo: 'summarize', pathMatch: 'full' },
-      {
-        path: 'summarize',
-        loadComponent: () =>
-          import('./summary/summarize/summarize.component').then(
-            (m) => m.SummarizeComponent
-          ),
-        data: { animation: 'summarize' }
-      },
-      {
-        path: 'library',
-        loadChildren: () =>
-          import('./library/library.routes').then((m) => m.libraryRoutes),
-        data: { animation: 'library' }
-      },
-      {
-        path: 'chat',
-        loadComponent: () =>
-          import('./chat/chat.component').then((m) => m.ChatComponent),
-        data: { animation: 'chat' }
-      },
-      {
-        path: 'chat/:chatId',
-        loadComponent: () =>
-          import('./chat/chat.component').then((m) => m.ChatComponent),
-        data: { animation: 'chat' }
-      },
-    ],
+      import('./auth/components/login/login').then((m) => m.Login),
+    canActivate: [loggedInGuard],
   },
   {
     path: 'auth/callback',
     loadComponent: () =>
-      import('./auth/auth-callback/auth-callback.component').then(
-        (m) => m.AuthCallbackComponent
+      import('./auth/components/auth-callback/auth-callback').then(
+        (m) => m.AuthCallback
       ),
   },
   {
     path: 'auth/error',
     loadComponent: () =>
-      import('./auth/auth-error/auth-error.component').then(
-        (m) => m.AuthErrorComponent
+      import('./auth/components/auth-error/auth-error').then(
+        (m) => m.AuthError
       ),
+  },
+  {
+    path: '',
+    loadComponent: () => import('./layout/layout').then((m) => m.Layout),
+    canActivate: [authGuard],
+    children: [
+      {
+        path: '',
+        redirectTo: 'library',
+        pathMatch: 'full',
+      },
+      {
+        path: 'library',
+        loadChildren: () =>
+          import('./library/library.routes').then((m) => m.libraryRoutes),
+        data: { animation: 'library' },
+        providers: [
+          provideState(folderFeature),
+          provideState(tagFeature),
+          provideEffects(FolderEffects, TagEffects),
+        ],
+        resolve: {
+          init: () => {
+            const store = inject(Store);
+            store.dispatch(FolderActions.fetchFoldersCommand());
+            store.dispatch(TagActions.fetchTagsCommand());
+            return true;
+          },
+        },
+      },
+      {
+        path: 'chat',
+        loadComponent: () =>
+          import('./chat/chat.component').then((m) => m.ChatComponent),
+        data: { animation: 'chat' },
+      },
+      {
+        path: 'chat/:chatId',
+        loadComponent: () =>
+          import('./chat/chat.component').then((m) => m.ChatComponent),
+        data: { animation: 'chat' },
+      },
+    ],
   },
 ];

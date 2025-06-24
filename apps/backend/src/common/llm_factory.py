@@ -1,6 +1,5 @@
 """Unified LLM Factory for creating language model and embedding instances."""
 
-from typing import Optional
 
 from langchain.schema.embeddings import Embeddings
 from langchain.schema.language_model import BaseLanguageModel
@@ -24,7 +23,7 @@ class EmbeddingDimensions:
     OLLAMA_DEFAULT = 4096  # Most Ollama models
     
     @staticmethod
-    def get_dimension(provider: str, model: Optional[str] = None) -> int:
+    def get_dimension(provider: str, model: str | None = None) -> int:
         """Get the embedding dimension for a provider/model combination."""
         if provider == LLMProvider.OPENAI:
             if model and "large" in model:
@@ -50,7 +49,7 @@ class UnifiedLLMFactory:
         if self._provider == LLMProvider.OPENAI and not self.settings.openai_api_key:
             raise OpenAIConfigError()
     
-    def create_chat_model(self, temperature: Optional[float] = None) -> BaseLanguageModel:
+    def create_chat_model(self, temperature: float | None = None) -> BaseLanguageModel:
         """
         Create and return the appropriate chat model instance.
         
@@ -65,6 +64,8 @@ class UnifiedLLMFactory:
                 base_url=self.settings.ollama_base_url,
                 model=self.settings.ollama_model,
                 temperature=temperature or self.settings.openai_temperature,
+                timeout=60,  # 60 second timeout
+                request_timeout=60,
             )
         else:  # OpenAI
             return ChatOpenAI(
@@ -72,6 +73,8 @@ class UnifiedLLMFactory:
                 model=self.settings.openai_model,
                 temperature=temperature or self.settings.openai_temperature,
                 max_tokens=self.settings.openai_max_tokens,
+                request_timeout=60,  # 60 second timeout
+                max_retries=3,  # Retry up to 3 times
             )
     
     def create_embeddings_model(self) -> tuple[Embeddings, int]:
@@ -85,12 +88,15 @@ class UnifiedLLMFactory:
             embeddings = OllamaEmbeddings(
                 base_url=self.settings.ollama_base_url,
                 model=self.settings.ollama_model,
+                # Note: timeout parameters removed due to version compatibility
             )
             dimension = EmbeddingDimensions.OLLAMA_DEFAULT
         else:  # OpenAI
             embeddings = OpenAIEmbeddings(
                 api_key=self.settings.openai_api_key,
                 model="text-embedding-3-small",
+                request_timeout=30,  # 30 second timeout for embeddings
+                max_retries=3,  # Retry up to 3 times
             )
             dimension = EmbeddingDimensions.OPENAI_SMALL
         

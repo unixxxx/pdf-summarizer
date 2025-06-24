@@ -1,0 +1,1 @@
+"""Flashcard module for generating study flashcards from documents."""

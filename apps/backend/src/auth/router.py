@@ -1,16 +1,17 @@
 """Authentication router with OAuth2 support."""
 
 import logging
-from typing import Optional
 from urllib.parse import urlencode
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import RedirectResponse
 from itsdangerous import BadSignature, URLSafeSerializer
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..config import Settings, get_settings
+from ..database.session import get_db
 from .dependencies import (
-    CurrentUser,
+    CurrentUserDep,
     get_jwt_service,
     get_oauth_service,
     get_user_service,
@@ -18,15 +19,12 @@ from .dependencies import (
 from .jwt_service import JWTService
 from .oauth_service import OAuthService
 from .schemas import (
-    MessageResponse,
     OAuthLoginResponse,
-    Provider,
-    ProvidersResponse,
+    OAuthProvider,
     Token,
     User,
 )
 from .user_service import UserService
-from .utils import validate_oauth_provider
 
 logger = logging.getLogger(__name__)
 
@@ -43,41 +41,6 @@ router = APIRouter(
 
 
 @router.get(
-    "/providers",
-    response_model=ProvidersResponse,
-    summary="Get available OAuth providers",
-    description="Returns a list of configured OAuth providers",
-)
-async def get_available_providers(
-    settings: Settings = Depends(get_settings)
-) -> ProvidersResponse:
-    """Get list of available OAuth providers."""
-    providers: list[Provider] = []
-
-    if settings.google_oauth_enabled:
-        providers.append(
-            Provider(
-                name="google",
-                display_name="Google",
-                enabled=True,
-                icon="google",
-            )
-        )
-
-    if settings.github_oauth_enabled:
-        providers.append(
-            Provider(
-                name="github",
-                display_name="GitHub",
-                enabled=True,
-                icon="github",
-            )
-        )
-
-    return ProvidersResponse(providers=providers)
-
-
-@router.get(
     "/login/{provider}",
     response_model=OAuthLoginResponse,
     summary="Initiate OAuth login",
@@ -88,8 +51,8 @@ async def get_available_providers(
     },
 )
 async def oauth_login(
-    provider: str,
-    redirect_url: Optional[str] = Query(
+    provider: OAuthProvider,
+    redirect_url: str | None = Query(
         None,
         description="URL to redirect after authentication",
         max_length=500,
@@ -111,7 +74,7 @@ async def oauth_login(
         HTTPException: If provider is not supported
     """
     # Validate provider
-    validate_oauth_provider(provider, settings)
+    oauth_service.validate_oauth_provider(provider)
 
     # Validate redirect URL
     redirect_url = oauth_service.validate_redirect_url(redirect_url)
@@ -126,7 +89,9 @@ async def oauth_login(
 
     # Get authorization URL
     try:
-        auth_url = await oauth_service.get_authorization_url(provider, state, redirect_url)
+        auth_url = await oauth_service.get_authorization_url(
+            provider, state, redirect_url
+        )
         return OAuthLoginResponse(authorization_url=auth_url, state=state)
     except Exception as e:
         logger.error(f"Failed to generate authorization URL: {str(e)}")
@@ -148,11 +113,12 @@ async def oauth_login(
 async def oauth_callback(
     code: str = Query(..., description="Authorization code from OAuth provider"),
     state: str = Query(..., description="State parameter for CSRF protection"),
-    provider: Optional[str] = Query(None, description="OAuth provider name"),
-    redirect_url: Optional[str] = Query(None, description="Original redirect URL"),
+    provider: OAuthProvider | None = Query(None, description="OAuth provider name"),
+    redirect_url: str | None = Query(None, description="Original redirect URL"),
     oauth_service: OAuthService = Depends(get_oauth_service),
     jwt_service: JWTService = Depends(get_jwt_service),
     user_service: UserService = Depends(get_user_service),
+    db: AsyncSession = Depends(get_db),
     settings: Settings = Depends(get_settings),
 ):
     """
@@ -181,7 +147,7 @@ async def oauth_callback(
         user_info = await oauth_service.handle_callback(state_provider, code, state)
 
         # Create or update user
-        user = await user_service.create_or_update_user(user_info)
+        user = await user_service.create_or_update_user(db, user_info)
 
         # Generate JWT token
         token = jwt_service.create_token(user)
@@ -206,12 +172,12 @@ async def oauth_callback(
         raise
     except Exception as e:
         logger.error(f"OAuth callback error: {str(e)}", exc_info=True)
-        
+
         # Redirect to error page
         error_redirect = settings.frontend_url + "/auth/error"
         error_params = {"error": "authentication_failed"}
         error_uri = f"{error_redirect}?{urlencode(error_params)}"
-        
+
         return RedirectResponse(url=error_uri, status_code=status.HTTP_302_FOUND)
 
 
@@ -226,32 +192,10 @@ async def oauth_callback(
     },
 )
 async def get_current_user_info(
-    current_user: CurrentUser,
+    current_user: CurrentUserDep,
 ) -> User:
     """Get current user information."""
     return current_user
-
-
-@router.post(
-    "/logout",
-    response_model=MessageResponse,
-    summary="Logout user",
-    description="Logout the current user (client should discard the token)",
-    responses={
-        200: {"description": "Logout successful"},
-    },
-)
-async def logout(
-    current_user: CurrentUser,
-) -> MessageResponse:
-    """
-    Logout user.
-    
-    Note: This is a client-side operation. The client should discard the JWT token.
-    In a more complex system, you might want to implement token blacklisting.
-    """
-    logger.info(f"User {current_user.email} logged out")
-    return MessageResponse(message="Logout successful")
 
 
 @router.post(
@@ -265,12 +209,12 @@ async def logout(
     },
 )
 async def refresh_token(
-    current_user: CurrentUser,
+    current_user: CurrentUserDep,
     jwt_service: JWTService = Depends(get_jwt_service),
 ) -> Token:
     """
     Refresh access token.
-    
+
     This endpoint allows clients to get a new token before the current one expires.
     """
     new_token = jwt_service.create_token(current_user)
@@ -289,17 +233,18 @@ async def refresh_token(
     },
 )
 async def delete_account(
-    current_user: CurrentUser,
+    current_user: CurrentUserDep,
     user_service: UserService = Depends(get_user_service),
+    db: AsyncSession = Depends(get_db),
 ):
     """
     Delete user account.
-    
+
     This will permanently delete the user account and all associated data.
     This action cannot be undone.
     """
     try:
-        await user_service.delete_user(current_user.id)
+        await user_service.delete_user(db, current_user.id)
         logger.info(f"User account deleted: {current_user.email}")
     except Exception as e:
         logger.error(f"Failed to delete user account: {str(e)}")

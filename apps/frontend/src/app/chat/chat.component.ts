@@ -12,11 +12,18 @@ import {
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router, RouterModule } from '@angular/router';
-import { trigger, style, transition, animate, query, stagger } from '@angular/animations';
+import {
+  trigger,
+  style,
+  transition,
+  animate,
+  query,
+  stagger,
+} from '@angular/animations';
 // import { ChatMessage } from '../core/domain/models/chat.model';
 import { ChatStore } from './chat.store';
-import { ConfirmationModalComponent } from '../shared/confirmation-modal.component';
-import { formatRelativeDate } from '../shared/utils/formatters/date.formatter';
+import { ConfirmationModal } from '../shared/components/confirmation-modal/confirmation-modal';
+import { formatRelativeDate } from '../core/utils/date.formatter';
 import { MessageMetadata } from './chat.model';
 
 interface ChatMessageDisplay {
@@ -33,45 +40,56 @@ interface ChatMessageDisplay {
 @Component({
   selector: 'app-chat',
   standalone: true,
-  imports: [
-    CommonModule,
-    FormsModule,
-    RouterModule,
-    ConfirmationModalComponent,
-  ],
+  imports: [CommonModule, FormsModule, RouterModule, ConfirmationModal],
   changeDetection: ChangeDetectionStrategy.OnPush,
   animations: [
     trigger('messageAnimation', [
       transition(':enter', [
         style({ opacity: 0, transform: 'translateY(20px)' }),
-        animate('300ms cubic-bezier(0.4, 0, 0.2, 1)', style({ opacity: 1, transform: 'translateY(0)' }))
-      ])
+        animate(
+          '300ms cubic-bezier(0.4, 0, 0.2, 1)',
+          style({ opacity: 1, transform: 'translateY(0)' })
+        ),
+      ]),
     ]),
     trigger('fadeScaleIn', [
       transition(':enter', [
         style({ transform: 'scale(0.95)', opacity: 0 }),
-        animate('300ms cubic-bezier(0.4, 0, 0.2, 1)', style({ transform: 'scale(1)', opacity: 1 }))
+        animate(
+          '300ms cubic-bezier(0.4, 0, 0.2, 1)',
+          style({ transform: 'scale(1)', opacity: 1 })
+        ),
       ]),
       transition(':leave', [
-        animate('300ms cubic-bezier(0.4, 0, 0.2, 1)', style({ transform: 'scale(0.95)', opacity: 0 }))
-      ])
+        animate(
+          '300ms cubic-bezier(0.4, 0, 0.2, 1)',
+          style({ transform: 'scale(0.95)', opacity: 0 })
+        ),
+      ]),
     ]),
     trigger('fadeIn', [
       transition(':enter', [
         style({ opacity: 0 }),
-        animate('200ms ease-in', style({ opacity: 1 }))
-      ])
+        animate('200ms ease-in', style({ opacity: 1 })),
+      ]),
     ]),
     trigger('listAnimation', [
       transition('* => *', [
-        query(':enter', [
-          style({ opacity: 0, transform: 'translateY(10px)' }),
-          stagger(30, [
-            animate('200ms ease-out', style({ opacity: 1, transform: 'translateY(0)' }))
-          ])
-        ], { optional: true })
-      ])
-    ])
+        query(
+          ':enter',
+          [
+            style({ opacity: 0, transform: 'translateY(10px)' }),
+            stagger(30, [
+              animate(
+                '200ms ease-out',
+                style({ opacity: 1, transform: 'translateY(0)' })
+              ),
+            ]),
+          ],
+          { optional: true }
+        ),
+      ]),
+    ]),
   ],
   template: `
     <div class="max-w-7xl mx-auto h-[calc(100vh-5rem)] flex">
@@ -102,7 +120,10 @@ interface ChatMessageDisplay {
           </button>
         </div>
 
-        <div class="flex-1 overflow-y-auto" [@listAnimation]="sessions().length">
+        <div
+          class="flex-1 overflow-y-auto"
+          [@listAnimation]="sessions().length"
+        >
           @if (isLoadingSessions()) {
           <div class="p-4 text-center text-muted-foreground">
             <div class="inline-flex items-center">
@@ -130,7 +151,8 @@ interface ChatMessageDisplay {
             <p class="text-sm">No chat sessions yet</p>
             <p class="text-xs mt-1">Upload a PDF to start chatting</p>
           </div>
-          } @else { @for (session of sessions(); track session.id; let i = $index) {
+          } @else { @for (session of sessions(); track session.id; let i =
+          $index) {
           <button
             [style.animation-delay.ms]="i * 30"
             (click)="selectChat(session.id)"

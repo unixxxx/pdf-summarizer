@@ -1,0 +1,1 @@
+"""Folder management module for document organization."""

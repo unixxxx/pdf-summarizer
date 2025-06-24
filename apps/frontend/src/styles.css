@@ -371,4 +371,158 @@
   input[type='range'].slider:focus::-moz-range-thumb {
     box-shadow: 0 0 0 4px rgb(var(--primary-600) / 0.2);
   }
+
+  /* Modal Styles */
+  .cdk-overlay-backdrop.modal-backdrop {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: rgba(0, 0, 0, 0.5);
+    backdrop-filter: blur(4px);
+  }
+
+  .dark .cdk-overlay-backdrop.modal-backdrop {
+    background-color: rgba(0, 0, 0, 0.7);
+  }
+
+  /* Backdrop animation */
+  .cdk-overlay-backdrop.backdrop-animated {
+    opacity: 0;
+    transition: opacity 300ms cubic-bezier(0.25, 0.8, 0.25, 1);
+  }
+
+  .cdk-overlay-backdrop.backdrop-animated.cdk-overlay-backdrop-showing {
+    opacity: 1;
+  }
+
+  /* Modal panel - simplified for CDK's positioning */
+  .cdk-overlay-pane.modal-panel {
+    padding: 1rem;
+  }
+
+  /* Modal panel animation */
+  @keyframes modalFadeIn {
+    from {
+      opacity: 0;
+      transform: scale(0.9) translateY(20px);
+    }
+    to {
+      opacity: 1;
+      transform: scale(1) translateY(0);
+    }
+  }
+
+  @keyframes modalFadeOut {
+    from {
+      opacity: 1;
+      transform: scale(1) translateY(0);
+    }
+    to {
+      opacity: 0;
+      transform: scale(0.95) translateY(10px);
+    }
+  }
+
+  .cdk-overlay-pane.modal-panel.modal-animated {
+    animation: modalFadeIn 300ms cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  .cdk-overlay-pane.modal-panel.modal-animated.cdk-overlay-pane-detaching {
+    animation: modalFadeOut 200ms cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  /* Ensure CDK overlay container is properly positioned */
+  .cdk-overlay-container {
+    position: fixed;
+    z-index: 1000;
+  }
+
+  /* Remove any extra divs that might interfere */
+  .cdk-global-overlay-wrapper {
+    display: contents;
+  }
+
+  /* Modal content base styles */
+  .modal-content {
+    background: rgb(var(--background));
+    color: rgb(var(--foreground));
+    border-radius: 0.75rem;
+    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1),
+      0 10px 10px -5px rgba(0, 0, 0, 0.04);
+    width: 100%;
+    max-height: calc(100vh - 2rem);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* Force dark mode inheritance */
+  .dark .modal-content {
+    background: rgb(var(--background));
+    color: rgb(var(--foreground));
+  }
+
+  .dark .modal-content {
+    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5),
+      0 10px 10px -5px rgba(0, 0, 0, 0.3);
+    border: 1px solid rgb(var(--border));
+  }
+
+  /* Modal header */
+  .modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 1.5rem;
+    border-bottom: 1px solid rgb(var(--border));
+  }
+
+  .modal-header h2 {
+    font-size: 1.25rem;
+    font-weight: 600;
+    color: rgb(var(--foreground));
+  }
+
+  /* Modal body */
+  .modal-body {
+    padding: 1.5rem;
+    overflow-y: auto;
+    flex: 1;
+  }
+
+  /* Modal footer */
+  .modal-footer {
+    display: flex;
+    gap: 0.75rem;
+    justify-content: flex-end;
+    padding: 1.5rem;
+    border-top: 1px solid rgb(var(--border));
+  }
+
+  /* Custom select styling */
+  select {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3E%3Cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 0.75rem center;
+    background-size: 16px 16px;
+    appearance: none;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+  }
+
+  .dark select {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3E%3Cpath stroke='%23a1a1aa' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3E%3C/svg%3E");
+  }
+
+  /* Folder modal specific styles */
+  .folder-modal .modal-content {
+    max-width: 500px;
+  }
+
+  /* Delete modal specific styles */
+  .delete-modal .modal-content {
+    max-width: 400px;
+  }
 }

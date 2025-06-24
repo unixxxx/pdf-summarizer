@@ -7,12 +7,8 @@ from ..common.schemas import HealthResponse, MessageResponse
 from ..config import Settings, get_settings
 
 router = APIRouter(
-    tags=["Health & Status"],
-    responses={
-        200: {"description": "Success"},
-        503: {"description": "Service unavailable"},
-    },
-)
+    tags=["Health & Status"], responses={
+        200: {"description": "Success"}, 503: {"description": "Service unavailable"}, }, )
 
 
 @router.get(

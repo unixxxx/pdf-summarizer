@@ -1,5 +1,6 @@
 """Database models for PDF Summarizer."""
 
+from enum import Enum
 from uuid import uuid4
 
 from pgvector.sqlalchemy import Vector
@@ -15,10 +16,20 @@ from sqlalchemy import (
     UniqueConstraint,
     func,
 )
+from sqlalchemy import Enum as SQLEnum
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import backref, relationship
 
 from .session import Base
+
+
+class DocumentStatus(str, Enum):
+    """Document processing status."""
+    PENDING = "pending"  # Initial state when document record is created
+    UPLOADING = "uploading"  # File is being uploaded
+    PROCESSING = "processing"  # File is being processed (text extraction, embeddings)
+    COMPLETED = "completed"  # Processing complete, ready for use
+    FAILED = "failed"  # Processing failed
 
 # Association table for many-to-many relationship between documents and tags
 document_tags = Table(
@@ -29,12 +40,14 @@ document_tags = Table(
     Column('created_at', DateTime, nullable=False, default=func.now())
 )
 
-# Association table for many-to-many relationship between documents and folders
-document_folders = Table(
-    'document_folders',
+# Removed document_folders table - documents now have direct folder_id
+
+# Association table for many-to-many relationship between folders and tags (for smart folders)
+folder_tags = Table(
+    'folder_tags',
     Base.metadata,
-    Column('document_id', UUID(as_uuid=True), ForeignKey('documents.id', ondelete='CASCADE'), primary_key=True),
     Column('folder_id', UUID(as_uuid=True), ForeignKey('folders.id', ondelete='CASCADE'), primary_key=True),
+    Column('tag_id', UUID(as_uuid=True), ForeignKey('tags.id', ondelete='CASCADE'), primary_key=True),
     Column('created_at', DateTime, nullable=False, default=func.now())
 )
 
@@ -84,8 +97,14 @@ class Document(Base):
     storage_path = Column(String(500), nullable=True)  # S3 key or local path
     extracted_text = Column(Text, nullable=True)
     word_count = Column(Integer, nullable=True)
+    folder_id = Column(UUID(as_uuid=True), ForeignKey("folders.id"), nullable=True, index=True)  # Direct folder relationship
+    status = Column(
+        SQLEnum(DocumentStatus, name='documentstatus', values_callable=lambda x: [e.value for e in x]), 
+        nullable=False, 
+        default=DocumentStatus.PENDING
+    )
     created_at = Column(DateTime, nullable=False, default=func.now(), index=True)  # Index for sorting
-    deleted_at = Column(DateTime, nullable=True, index=True)  # Soft delete timestamp
+    archived_at = Column(DateTime, nullable=True, index=True)  # Soft delete timestamp
 
     # Relationships
     user = relationship("User", back_populates="documents")
@@ -101,9 +120,7 @@ class Document(Base):
     tags = relationship(
         "Tag", secondary=document_tags, back_populates="documents"
     )
-    folders = relationship(
-        "Folder", secondary=document_folders, back_populates="documents"
-    )
+    folder = relationship("Folder", back_populates="documents")
 
 
 class Summary(Base):
@@ -195,11 +212,15 @@ class Tag(Base):
     slug = Column(String(100), unique=True, nullable=False, index=True)  # URL-friendly version
     description = Column(Text, nullable=True)
     color = Column(String(7), nullable=True)  # Hex color code
+    embedding = Column(Vector, nullable=True)  # Flexible dimension for any embedding model
     created_at = Column(DateTime, nullable=False, default=func.now())
     
     # Relationships
     documents = relationship(
         "Document", secondary=document_tags, back_populates="tags"
+    )
+    folders = relationship(
+        "Folder", secondary=folder_tags, back_populates="tags"
     )
 
 
@@ -218,17 +239,18 @@ class Folder(Base):
     updated_at = Column(
         DateTime, nullable=False, default=func.now(), onupdate=func.now()
     )
-    deleted_at = Column(DateTime, nullable=True, index=True)  # Soft delete timestamp
+    archived_at = Column(DateTime, nullable=True, index=True)  # Soft delete timestamp
 
     # Relationships
     user = relationship("User", back_populates="folders")
-    documents = relationship(
-        "Document", secondary=document_folders, back_populates="folders"
-    )
+    documents = relationship("Document", back_populates="folder")
     parent = relationship(
         "Folder", 
         remote_side=[id], 
         backref=backref("children", cascade="all, delete-orphan")
+    )
+    tags = relationship(
+        "Tag", secondary=folder_tags, back_populates="folders"
     )
 
     __table_args__ = (

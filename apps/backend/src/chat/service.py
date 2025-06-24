@@ -1,13 +1,12 @@
 """Chat service for document Q&A."""
 
 import json
-from typing import Optional
 from uuid import UUID
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..common.exceptions import NotFoundError
+from ..common.exceptions import NotFoundException
 from ..common.llm_factory import UnifiedLLMFactory
 from ..config import Settings
 from ..database.models import Chat, ChatMessage, Document
@@ -17,7 +16,7 @@ from ..embeddings.service import EmbeddingsService
 class ChatService:
     """Service for managing chat sessions and Q&A with documents."""
 
-    def __init__(self, settings: Settings, embeddings_service: EmbeddingsService, factory: UnifiedLLMFactory):
+    def __init__(self, settings: Settings, embeddings_service: EmbeddingsService | None, factory: UnifiedLLMFactory):
         self.settings = settings
         self.embeddings_service = embeddings_service
         self.factory = factory
@@ -30,7 +29,7 @@ class ChatService:
         user_id: UUID,
         document_id: UUID,
         db: AsyncSession,
-    ) -> Optional[Chat]:
+    ) -> Chat | None:
         """Find an existing active chat session for a document."""
         # Query for the most recent chat session for this document
         result = await db.execute(
@@ -56,7 +55,7 @@ class ChatService:
         self,
         user_id: UUID,
         document_id: UUID,
-        title: Optional[str],
+        title: str | None,
         db: AsyncSession,
     ) -> Chat:
         """Create a new chat session for a document."""
@@ -70,7 +69,7 @@ class ChatService:
         document = result.scalar_one_or_none()
         
         if not document:
-            raise NotFoundError("Document")
+            raise NotFoundException("Document not found")
         
         # Create chat session
         chat = Chat(
@@ -84,18 +83,6 @@ class ChatService:
         
         return chat
     
-    async def get_user_chats(
-        self,
-        user_id: UUID,
-        db: AsyncSession,
-    ) -> list[Chat]:
-        """Get all chat sessions for a user."""
-        result = await db.execute(
-            select(Chat)
-            .where(Chat.user_id == user_id)
-            .order_by(Chat.updated_at.desc())
-        )
-        return result.scalars().all()
     
     async def get_chat_messages(
         self,
@@ -114,7 +101,7 @@ class ChatService:
         chat = result.scalar_one_or_none()
         
         if not chat:
-            raise NotFoundError("Chat")
+            raise NotFoundException("Chat not found")
         
         # Get messages
         result = await db.execute(
@@ -142,7 +129,7 @@ class ChatService:
         chat = result.scalar_one_or_none()
         
         if not chat:
-            raise NotFoundError("Chat")
+            raise NotFoundException("Chat not found")
         
         # Save user message
         user_message = ChatMessage(
@@ -152,24 +139,48 @@ class ChatService:
         )
         db.add(user_message)
         
-        # Get relevant document chunks (increased from 5 to 8 for better context)
-        relevant_chunks = await self.embeddings_service.search_similar_chunks(
-            query=message,
-            document_id=str(chat.document_id),
-            db=db,
-            limit=8,
-        )
+        # Get relevant document chunks if embeddings are available
+        relevant_chunks = []
+        if self.embeddings_service:
+            relevant_chunks = await self.embeddings_service.search_similar_chunks(
+                query=message,
+                document_id=str(chat.document_id),
+                db=db,
+                limit=8,
+            )
         
-        # Build context from relevant chunks
+        # Build context from relevant chunks or use full document
         context_texts = []
         chunk_metadata = []
-        for chunk, similarity in relevant_chunks:
-            context_texts.append(chunk.chunk_text)
-            chunk_metadata.append({
-                "chunk_id": str(chunk.id),
+        
+        if relevant_chunks:
+            # Use similarity search results
+            for chunk, similarity in relevant_chunks:
+                context_texts.append(chunk.chunk_text)
+                chunk_metadata.append({
+                    "chunk_id": str(chunk.id),
                 "similarity": similarity,
                 "chunk_index": chunk.chunk_index,
             })
+        elif not self.embeddings_service:
+            # Fallback: Use document's full text when embeddings aren't available
+            # Get document to use its extracted text
+            result = await db.execute(
+                select(Document).where(Document.id == chat.document_id)
+            )
+            document = result.scalar_one()
+            
+            if document.extracted_text:
+                # Truncate if too long (keep it reasonable for context window)
+                max_chars = 8000  # Roughly equivalent to what we'd get from chunks
+                text = document.extracted_text[:max_chars]
+                if len(document.extracted_text) > max_chars:
+                    text += "\n\n[Note: Document truncated for processing]"
+                context_texts.append(text)
+                chunk_metadata.append({
+                    "type": "full_document",
+                    "truncated": len(document.extracted_text) > max_chars
+                })
         
         context = "\n\n".join(context_texts)
         
@@ -295,7 +306,7 @@ class ChatService:
         chat = result.scalar_one_or_none()
         
         if not chat:
-            raise NotFoundError("Chat")
+            raise NotFoundException("Chat not found")
         
         await db.delete(chat)
         await db.commit()

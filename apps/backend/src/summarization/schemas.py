@@ -1,5 +1,5 @@
 from enum import Enum
-from typing import Optional
+from typing import Any
 from uuid import UUID
 
 from pydantic import Field, field_validator
@@ -15,49 +15,86 @@ class SummaryStyle(str, Enum):
     BULLET_POINTS = "bullet_points"
 
 
-class CreateSummaryRequest(BaseSchema):
+class SummaryOptions(BaseSchema):
+    """Options for summarization."""
+    style: SummaryStyle = Field(default=SummaryStyle.BALANCED, description="Summary style")
+    max_length: int | None = Field(default=None, description="Maximum length in words", ge=1)
+    focus_areas: str | None = Field(default=None, description="Areas to focus on", max_length=500)
+    custom_prompt: str | None = Field(default=None, description="Custom prompt modifier", max_length=1000)
+    
+    @property
+    def prompt_modifier(self) -> str:
+        """Build prompt modifier from options."""
+        modifiers = []
+        
+        if self.style == SummaryStyle.DETAILED:
+            modifiers.append("Provide a comprehensive and detailed summary")
+        elif self.style == SummaryStyle.CONCISE:
+            modifiers.append("Provide a brief and concise summary")
+        elif self.style == SummaryStyle.BULLET_POINTS:
+            modifiers.append("Provide the summary as bullet points")
+        
+        if self.max_length:
+            modifiers.append(f"Limit the summary to approximately {self.max_length} words")
+        
+        if self.focus_areas:
+            modifiers.append(f"Focus particularly on: {self.focus_areas}")
+        
+        if self.custom_prompt:
+            modifiers.append(self.custom_prompt)
+        
+        return ". ".join(modifiers) if modifiers else ""
+
+
+class SummaryResult(BaseSchema):
+    """Result of summarization."""
+    content: str = Field(..., description="Summary content")
+    processing_time: float = Field(..., description="Processing time in seconds")
+    metadata: dict[str, Any] = Field(default_factory=dict, description="Additional metadata")
+    
+    @property
+    def word_count(self) -> int:
+        """Calculate word count of the summary."""
+        return len(self.content.split())
+    
+    @property
+    def was_fast(self) -> bool:
+        """Check if processing was fast (under 5 seconds)."""
+        return self.processing_time < 5.0
+
+
+class CreateSummaryRequest(SummaryOptions):
     """Request to create a summary."""
     
-    document_id: Optional[UUID] = Field(
+    document_id: UUID | None = Field(
         None, 
         description="ID of existing document to summarize"
     )
-    text: Optional[str] = Field(
+    text: str | None = Field(
         None, 
         description="Raw text to summarize (creates new document)",
         min_length=1,
         max_length=1000000  # 1MB text limit
     )
-    filename: Optional[str] = Field(
+    filename: str | None = Field(
         None, 
         description="Filename for text document",
         min_length=1,
         max_length=255
     )
-    style: SummaryStyle = Field(
-        SummaryStyle.BALANCED, 
-        description="Summary style"
-    )
-    max_length: Optional[int] = Field(
-        None, 
-        description="Maximum length in words",
-        ge=50,
-        le=5000
-    )
-    focus_areas: Optional[str] = Field(
-        None, 
-        description="Areas to focus on",
-        max_length=500
-    )
-    custom_prompt: Optional[str] = Field(
-        None, 
-        description="Custom prompt modifier",
-        max_length=1000
-    )
+    
+    def get_summary_options(self) -> SummaryOptions:
+        """Return SummaryOptions"""
+        return SummaryOptions(
+            focus_areas=self.focus_areas,
+            custom_prompt=self.custom_prompt,
+            max_length=self.max_length,
+            style=self.style
+        )
 
     @field_validator('text')
     @classmethod
-    def validate_text(cls, v: Optional[str]) -> Optional[str]:
+    def validate_text(cls, v: str | None) -> str | None:
         """Validate and clean text input."""
         if v:
             return v.strip()
@@ -65,7 +102,7 @@ class CreateSummaryRequest(BaseSchema):
 
     @field_validator('filename')
     @classmethod
-    def validate_filename(cls, v: Optional[str]) -> Optional[str]:
+    def validate_filename(cls, v: str | None) -> str | None:
         """Validate and clean filename."""
         if v:
             return v.strip()
@@ -96,8 +133,8 @@ class DocumentInfoResponse(BaseSchema):
     id: UUID
     filename: str
     file_size: int
-    word_count: Optional[int] = None
-    page_count: Optional[int] = None
+    word_count: int | None = None
+    page_count: int | None = None
     created_at: str
 
 
@@ -144,133 +181,4 @@ class SummaryResponse(BaseSchema):
     }
 
 
-class TextSummaryRequest(BaseSchema):
-    """Request schema for text summarization."""
 
-    text: str = Field(
-        ..., description="Text content to summarize", min_length=10, max_length=100000
-    )
-    max_length: Optional[int] = Field(
-        default=500, description="Maximum length of summary in words", ge=50, le=2000
-    )
-    format: Optional[str] = Field(
-        default="paragraph",
-        description="Summary format: 'paragraph', 'bullets', or 'keypoints'",
-        pattern="^(paragraph|bullets|keypoints)$",
-    )
-    instructions: Optional[str] = Field(
-        default=None,
-        description="Additional instructions for summary generation",
-        max_length=500,
-    )
-
-    @field_validator("text")
-    @classmethod
-    def validate_text_content(cls, v: str) -> str:
-        """Ensure text has meaningful content."""
-        if not v.strip():
-            raise ValueError("Text content cannot be empty or only whitespace")
-        return v
-
-    model_config = BaseSchema.model_config.copy()
-    model_config["json_schema_extra"] = {
-        "example": {
-            "text": "Long text content to be summarized...",
-            "max_length": 500,
-            "format": "paragraph",
-            "instructions": "Focus on technical details",
-        }
-    }
-
-
-class TextSummaryResponse(BaseSchema):
-    """Response schema for text summarization."""
-
-    summary: str = Field(..., description="Generated summary")
-    original_length: int = Field(..., description="Original text length in characters")
-    summary_length: int = Field(..., description="Summary length in characters")
-    original_words: int = Field(..., description="Original text word count")
-    summary_words: int = Field(..., description="Summary word count")
-    compression_ratio: float = Field(..., description="Compression ratio as percentage")
-
-    model_config = BaseSchema.model_config.copy()
-    model_config["json_schema_extra"] = {
-        "example": {
-            "summary": "This is a concise summary of the text...",
-            "original_length": 5000,
-            "summary_length": 500,
-            "original_words": 1000,
-            "summary_words": 100,
-            "compression_ratio": 10.0,
-        }
-    }
-
-
-class TagGenerationResponse(BaseSchema):
-    """Schema for structured tag generation from LLM."""
-    
-    tags: list[str] = Field(
-        ...,
-        min_items=3,
-        max_items=8,
-        description=(
-            "List of relevant tags for the document. Tags should be lowercase, "
-            "use hyphens for multi-word tags (e.g., 'machine-learning'), "
-            "and be relevant to the content."
-        )
-    )
-    
-    @field_validator('tags')
-    @classmethod
-    def validate_tags(cls, v: list[str]) -> list[str]:
-        """Validate and clean tags."""
-        cleaned_tags = []
-        for tag in v:
-            # Convert to lowercase and replace spaces with hyphens
-            tag = tag.lower().strip().replace(' ', '-')
-            # Remove any non-alphanumeric characters except hyphens
-            tag = ''.join(c for c in tag if c.isalnum() or c == '-')
-            # Remove multiple consecutive hyphens
-            while '--' in tag:
-                tag = tag.replace('--', '-')
-            # Remove leading/trailing hyphens
-            tag = tag.strip('-')
-            
-            # Only add if valid
-            if tag and 1 < len(tag) <= 50 and tag not in cleaned_tags:
-                cleaned_tags.append(tag)
-        
-        return cleaned_tags[:8]  # Ensure max 8 tags
-    
-    model_config = BaseSchema.model_config.copy()
-    model_config["json_schema_extra"] = {
-        "example": {
-            "tags": [
-                "machine-learning", "python", "data-science", 
-                "tutorial", "neural-networks"
-            ]
-        }
-    }
-
-
-class SummaryStats(BaseSchema):
-    """Statistics about a generated summary."""
-
-    original_length: int = Field(..., description="Original text length")
-    summary_length: int = Field(..., description="Summary length")
-    original_words: int = Field(..., description="Original word count")
-    summary_words: int = Field(..., description="Summary word count")
-    compression_ratio: float = Field(..., description="Compression ratio")
-    chunk_count: int = Field(..., description="Number of chunks processed")
-
-    model_config = BaseSchema.model_config.copy()
-    model_config["json_schema_extra"] = {
-        "example": {
-            "original_length": 5000,
-            "summary_length": 500,
-            "original_words": 1000,
-            "summary_words": 100,
-            "compression_ratio": 10.0,
-            "chunk_count": 3,
-        }
-    }

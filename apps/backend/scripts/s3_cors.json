@@ -1,0 +1,19 @@
+[
+  {
+    "AllowedHeaders": ["*"],
+    "AllowedMethods": ["GET", "PUT", "POST", "DELETE", "HEAD"],
+    "AllowedOrigins": [
+      "http://localhost:4200",
+      "http://localhost:3000",
+      "http://localhost:8080"
+    ],
+    "ExposeHeaders": [
+      "ETag",
+      "x-amz-server-side-encryption",
+      "x-amz-request-id",
+      "x-amz-id-2",
+      "x-amz-server-side-encryption-aws-kms-key-id"
+    ],
+    "MaxAgeSeconds": 3000
+  }
+]

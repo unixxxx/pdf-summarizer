@@ -1,4 +1,8 @@
-import { Summary, SummaryDto, TagDto } from '../../summary/summary.model';
+import {
+  Summary,
+  SummaryDto,
+  TagDto,
+} from '../../shared/models/document.model';
 
 // DTO interface for API responses
 export interface DocumentDto {
@@ -14,6 +18,15 @@ export interface DocumentDto {
   folder_ids?: string[];
 }
 
+// Document status enum matching backend
+export enum DocumentStatus {
+  PENDING = 'pending',
+  UPLOADING = 'uploading',
+  PROCESSING = 'processing',
+  COMPLETED = 'completed',
+  FAILED = 'failed',
+}
+
 // DTO interface for library API response
 export interface LibraryItemDto {
   id: string;
@@ -25,11 +38,10 @@ export interface LibraryItemDto {
   summary: string;
   word_count?: number;
   wordCount?: number; // Legacy support
-  processing_time?: number;
-  processingTime?: number; // Legacy support
   created_at?: string;
   createdAt?: string; // Legacy support
   tags?: TagDto[];
+  status: DocumentStatus;
 }
 
 export interface PaginatedLibraryResponse {
@@ -181,7 +193,8 @@ export class LibraryItem {
     public readonly filename: string,
     public readonly fileSize: number,
     public readonly summary: Summary,
-    public readonly createdAt: Date
+    public readonly createdAt: Date,
+    public readonly status: DocumentStatus
   ) {}
 
   /**
@@ -193,7 +206,7 @@ export class LibraryItem {
       document_id: dto.document_id,
       content: dto.summary,
       word_count: dto.word_count || dto.wordCount || 0,
-      processing_time: dto.processing_time || dto.processingTime || 0,
+      processing_time: 0, // No longer tracked from backend
       created_at: dto.created_at || dto.createdAt || new Date().toISOString(),
       tags: dto.tags,
     };
@@ -204,7 +217,8 @@ export class LibraryItem {
       dto.filename || dto.fileName || 'Unknown',
       dto.file_size || dto.fileSize || 0,
       Summary.fromDto(summaryDto),
-      new Date(dto.created_at || dto.createdAt || new Date())
+      new Date(dto.created_at || dto.createdAt || new Date()),
+      dto.status
     );
   }
 }

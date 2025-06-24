@@ -1,1 +1,0 @@
-"""Trash module for managing soft-deleted items."""
