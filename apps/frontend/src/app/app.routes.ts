@@ -10,6 +10,8 @@ import { FolderEffects } from './library/folder/store/folder.effects';
 import { folderFeature } from './library/folder/store/folder.feature';
 import { tagFeature } from './library/tag/store/tag.feature';
 import { TagEffects } from './library/tag/store/tag.effects';
+import { uploadFeature } from './library/upload/store/upload.feature';
+import { UploadEffects } from './library/upload/store/upload.effects';
 
 export const routes: Routes = [
   {
@@ -50,7 +52,8 @@ export const routes: Routes = [
         providers: [
           provideState(folderFeature),
           provideState(tagFeature),
-          provideEffects(FolderEffects, TagEffects),
+          provideState(uploadFeature),
+          provideEffects(FolderEffects, TagEffects, UploadEffects),
         ],
         resolve: {
           init: () => {

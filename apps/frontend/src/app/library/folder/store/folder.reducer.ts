@@ -17,9 +17,9 @@ const initialState: FolderState = {
     },
     AsyncDataItemState.IDLE
   ),
-  selectedFolderId: null,
+  selectedFolderId: undefined,
   expandedFolders: [],
-  dragOverFolder: null,
+  dragOverFolder: undefined,
 };
 
 export const folderReducer = createReducer<FolderState>(
@@ -128,7 +128,7 @@ export const folderReducer = createReducer<FolderState>(
         AsyncDataItemState.LOADED
       ),
       selectedFolderId:
-        state.selectedFolderId === id ? null : state.selectedFolderId,
+        state.selectedFolderId === id ? undefined : state.selectedFolderId,
     };
   }),
 

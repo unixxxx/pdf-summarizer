@@ -5,7 +5,6 @@ import {
   FolderItemDto,
   FolderUpdateDto,
 } from '../dtos/folder';
-import { TagDto } from '../../tag/dtos/tag';
 import { FolderItem } from './state/folder';
 
 export const FolderActions = createActionGroup({
@@ -30,18 +29,13 @@ export const FolderActions = createActionGroup({
     'Delete folder failure event': props<{ error: string }>(),
 
     // Folder UI state
-    'Select folder command': props<{ folderId: string | null }>(),
+    'Select folder command': props<{ folderId: string | undefined }>(),
     'Toggle folder expanded command': props<{ folderId: string }>(),
-    'Set drag over folder command': props<{ folderId: string | null }>(),
+    'Set drag over folder command': props<{ folderId: string | undefined }>(),
 
     // Folder modal actions
     'Open create folder modal command': props<{ parentId?: string }>(),
     'Open edit folder modal command': props<{ folder: FolderItem }>(),
     'Open delete folder modal command': props<{ folder: FolderItem }>(),
-
-    // Tag operations
-    'Fetch tags command': emptyProps(),
-    'Fetch tags success event': props<{ tags: TagDto[] }>(),
-    'Fetch tags failure event': props<{ error: string }>(),
   },
 });

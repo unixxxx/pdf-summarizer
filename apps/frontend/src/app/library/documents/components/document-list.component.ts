@@ -2,7 +2,6 @@ import {
   Component,
   inject,
   ChangeDetectionStrategy,
-  signal,
   OnInit,
   DestroyRef,
 } from '@angular/core';
@@ -12,24 +11,20 @@ import { ActivatedRoute } from '@angular/router';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { DocumentSearchComponent } from './document-search.component';
 import { DocumentCardComponent } from './document-card.component';
-import { UploadDialogComponent } from '../../upload/components/upload-dialog.component';
 import { LibraryStore } from '../../library.store';
 import { LibraryItem } from '../document.model';
 import { Store } from '@ngrx/store';
+import { UploadActions } from '../../upload/store/upload.actions';
+import { FolderActions } from '../../folder/store/folder.actions';
 
 @Component({
   selector: 'app-document-list',
   standalone: true,
-  imports: [
-    FormsModule,
-    DocumentSearchComponent,
-    DocumentCardComponent,
-    UploadDialogComponent,
-  ],
+  imports: [FormsModule, DocumentSearchComponent, DocumentCardComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <!-- Search Bar -->
-    <app-document-search (uploadClick)="showUploadDialog.set(true)" />
+    <app-document-search (uploadClick)="openUploadDialog()" />
 
     <!-- Document Grid -->
     <div class="p-6">
@@ -124,20 +119,11 @@ import { Store } from '@ngrx/store';
       </div>
       }
     </div>
-
-    <!-- Upload Dialog -->
-    @if (showUploadDialog()) {
-    <app-upload-dialog
-      (closeDialog)="showUploadDialog.set(false)"
-      (uploaded)="onDocumentUploaded()"
-    />
-    }
   `,
 })
 export class DocumentListComponent implements OnInit {
   protected libraryStore = inject(LibraryStore);
   private readonly store = inject(Store);
-  protected showUploadDialog = signal(false);
   private route = inject(ActivatedRoute);
   private destroyRef = inject(DestroyRef);
 
@@ -152,7 +138,7 @@ export class DocumentListComponent implements OnInit {
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe((params) => {
         const folderId = params['folderId'] || null;
-        // this.libraryStore.selectFolder(folderId);
+        this.store.dispatch(FolderActions.selectFolderCommand({ folderId }));
       });
   }
 
@@ -187,5 +173,9 @@ export class DocumentListComponent implements OnInit {
   onDragStart(event: DragEvent) {
     // Handle drag start
     // TODO: Implement drag functionality
+  }
+
+  openUploadDialog() {
+    this.store.dispatch(UploadActions.openUploadDialogCommand());
   }
 }

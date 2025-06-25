@@ -7,9 +7,9 @@ import {
   PresignedUrlRequest,
   PresignedUrlResponse,
   CreateTextDocumentRequest,
-} from './upload.model';
+} from '../store/state/upload';
 import { S3UploadService } from './upload-s3.service';
-import { uploadConfig } from '../../../environments/upload.config';
+import { uploadConfig } from '../../../../environments/upload.config';
 
 @Injectable({
   providedIn: 'root',
@@ -21,9 +21,6 @@ export class UploadService {
 
   // Configuration from centralized config
   private config = uploadConfig;
-
-  // Expose upload events as observable
-  uploadEvents = this.uploadEvents$.asObservable();
 
   /**
    * Calculate SHA-256 hash of a file
@@ -256,13 +253,4 @@ export class UploadService {
     );
   }
 
-  /**
-   * Cancel an upload (placeholder for future implementation)
-   */
-  cancelUpload(fileId: string): void {
-    this.uploadEvents$.next({
-      type: 'cancel',
-      fileId,
-    });
-  }
 }

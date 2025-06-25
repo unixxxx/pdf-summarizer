@@ -102,4 +102,16 @@ export class AuthEffects {
       ),
     { dispatch: false }
   );
+
+  refreshTokenFailure$ = createEffect(
+    () =>
+      this.actions$.pipe(
+        ofType(AuthActions.refreshTokenFailureEvent),
+        tap(() => {
+          // Redirect to login on refresh failure
+          this.router.navigate(['/login']);
+        })
+      ),
+    { dispatch: false }
+  );
 }

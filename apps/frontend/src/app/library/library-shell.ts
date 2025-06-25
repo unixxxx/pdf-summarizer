@@ -17,7 +17,6 @@ import {
 import { RouterOutlet } from '@angular/router';
 import { FolderSidebar } from './folder/components/folder-sidebar';
 import { DocumentDeleteDialogComponent } from './documents/components/document-delete-dialog.component';
-import { UploadDialogComponent } from './upload/components/upload-dialog.component';
 import { UIStore } from '../shared/ui.store';
 import { LibraryStore } from './library.store';
 
@@ -28,7 +27,6 @@ import { LibraryStore } from './library.store';
     RouterOutlet,
     FolderSidebar,
     DocumentDeleteDialogComponent,
-    UploadDialogComponent,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   animations: [
@@ -115,20 +113,12 @@ import { LibraryStore } from './library.store';
     <!-- Dialogs -->
     <app-document-delete-dialog />
 
-    <!-- Upload Dialog -->
-    @if (showUploadDialog()) {
-    <app-upload-dialog
-      (closeDialog)="showUploadDialog.set(false)"
-      (uploaded)="onDocumentUploaded()"
-    />
-    }
   `,
 })
 export class LibraryShell {
   protected uiStore = inject(UIStore);
   protected libraryStore = inject(LibraryStore);
   protected isMobile = signal(false);
-  protected showUploadDialog = signal(false);
 
   private previousProcessingIds = new Set<string>();
 

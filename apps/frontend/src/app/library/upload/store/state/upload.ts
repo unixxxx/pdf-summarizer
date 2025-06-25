@@ -1,17 +1,27 @@
-export interface UploadEvent {
-  type: 'start' | 'progress' | 'success' | 'error' | 'cancel';
-  fileId?: string;
-  fileName?: string;
-  progress?: number;
-  error?: string;
-  result?: UploadResult;
-}
+// Domain models for upload functionality
 
 export interface UploadResult {
   documentId: string;
   fileName: string;
   fileSize: number;
   uploadedAt: string;
+}
+
+export interface UploadProgress {
+  fileId: string;
+  fileName: string;
+  progress: number;
+  stage?: string;
+}
+
+export interface UploadEvent {
+  type: 'start' | 'progress' | 'success' | 'error' | 'cancel';
+  fileId?: string;
+  fileName?: string;
+  progress?: number;
+  stage?: string;
+  error?: string;
+  result?: UploadResult;
 }
 
 export type UploadMethod = 'presigned_post' | 'presigned_url';
@@ -41,25 +51,10 @@ export interface PresignedUrlResponse {
   };
 }
 
-export interface TextDocument {
-  title: string;
-  content: string;
-  tags?: string[];
-}
-
 export interface CreateTextDocumentRequest {
   title: string;
   content: string;
   folder_id?: string;
-  tags?: string[];
 }
 
 export type UploadType = 'file' | 'text';
-
-export interface UploadState {
-  isUploading: boolean;
-  uploadProgress: number;
-  currentFileName: string | null;
-  currentStage: string | null;
-  error: string | null;
-}

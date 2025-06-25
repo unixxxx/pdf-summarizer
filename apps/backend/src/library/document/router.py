@@ -16,7 +16,7 @@ from ..tag.schemas import TagResponse
 from .dependencies import DocumentServiceDep
 from .export_service import DocumentExporter
 from .schemas import (
-    CreateTextDocumentRequest,
+    TextDocumentCreate,
     DocumentResponse,
     ExportFormat,
     LibraryItemResponse,
@@ -306,7 +306,7 @@ async def export_document(
     description="Create a new document from text content",
 )
 async def create_text_document(
-    request: CreateTextDocumentRequest,
+    request: TextDocumentCreate,
     current_user: CurrentUserDep,
     document_service: DocumentServiceDep,
     db: AsyncSession = Depends(get_db),
@@ -316,9 +316,7 @@ async def create_text_document(
         # Create document with text content
         document = await document_service.create_text_document(
             user_id=current_user.id,
-            title=request.title,
-            content=request.content,
-            folder_id=request.folder_id,
+            data=request,
             db=db,
         )
         

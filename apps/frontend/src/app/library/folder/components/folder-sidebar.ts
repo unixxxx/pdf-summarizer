@@ -398,7 +398,7 @@ export class FolderSidebar {
   );
   dragOverFolder = this.store.selectSignal(folderFeature.selectDragOverFolder);
 
-  selectFolder(folderId: string | null) {
+  selectFolder(folderId: string | undefined) {
     this.store.dispatch(FolderActions.selectFolderCommand({ folderId }));
   }
 
@@ -444,7 +444,7 @@ export class FolderSidebar {
 
   onDragLeave() {
     this.store.dispatch(
-      FolderActions.setDragOverFolderCommand({ folderId: null })
+      FolderActions.setDragOverFolderCommand({ folderId: undefined })
     );
   }
 

@@ -2,7 +2,7 @@ import { Injectable } from '@angular/core';
 import { S3Client } from '@aws-sdk/client-s3';
 import { Upload } from '@aws-sdk/lib-storage';
 import { Observable } from 'rxjs';
-import { UploadEvent } from './upload.model';
+import { UploadEvent } from '../store/state/upload';
 
 export interface S3UploadConfig {
   region: string;

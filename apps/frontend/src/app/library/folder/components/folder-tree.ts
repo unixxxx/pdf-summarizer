@@ -220,9 +220,9 @@ import { FolderItem } from '../store/state/folder';
 export class FolderTree {
   // Input signals
   folders = input<FolderItem[]>([]);
-  selectedFolderId = input<string | null>(null);
+  selectedFolderId = input<string | undefined>(undefined);
   expandedFolders = input<string[]>([]);
-  dragOverFolder = input<string | null>(null);
+  dragOverFolder = input<string | undefined>(undefined);
 
   // Output signals
   folderSelected = output<string>();

@@ -3,7 +3,7 @@ import { Folder } from './folder';
 
 export interface FolderState {
   folder: AsyncDataItem<Folder>;
-  selectedFolderId: string | null;
+  selectedFolderId: string | undefined;
   expandedFolders: string[];
-  dragOverFolder: string | null;
+  dragOverFolder: string | undefined;
 }
