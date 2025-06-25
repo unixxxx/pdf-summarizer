@@ -6,7 +6,7 @@ import {
   computed,
 } from '@angular/core';
 
-import { TagComponent } from './tag.component';
+import { TagComponent } from './tag';
 import { Tag } from '../store/state/tag';
 
 @Component({

@@ -16,7 +16,6 @@ from ..tag.schemas import TagResponse
 from .dependencies import DocumentServiceDep
 from .export_service import DocumentExporter
 from .schemas import (
-    TextDocumentCreate,
     DocumentResponse,
     ExportFormat,
     LibraryItemResponse,
@@ -298,50 +297,52 @@ async def export_document(
     )
 
 
-@router.post(
-    "/text",
-    response_model=DocumentResponse,
-    status_code=status.HTTP_201_CREATED,
-    summary="Create text document",
-    description="Create a new document from text content",
-)
-async def create_text_document(
-    request: TextDocumentCreate,
-    current_user: CurrentUserDep,
-    document_service: DocumentServiceDep,
-    db: AsyncSession = Depends(get_db),
-) -> DocumentResponse:
-    """Create a new document from text content."""
-    try:
-        # Create document with text content
-        document = await document_service.create_text_document(
-            user_id=current_user.id,
-            data=request,
-            db=db,
-        )
-        
-        await db.commit()
-        await db.refresh(document)
-        
-        # Convert folder_id to list for response
-        folder_ids = [document.folder_id] if document.folder_id else []
-        
-        return DocumentResponse(
-            id=document.id,
-            user_id=document.user_id,
-            filename=document.filename,
-            file_size=document.file_size,
-            file_hash=document.file_hash,
-            status=document.status,
-            created_at=document.created_at,
-            extracted_text=document.extracted_text,
-            word_count=document.word_count,
-            folder_ids=folder_ids,
-        )
-        
-    except Exception as e:
-        await db.rollback()
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to create document: {str(e)}",
-        )
+# Note: This endpoint is deprecated in favor of using the presigned URL upload flow
+# for all document types including text documents
+# @router.post(
+#     "/text",
+#     response_model=DocumentResponse,
+#     status_code=status.HTTP_201_CREATED,
+#     summary="Create text document",
+#     description="Create a new document from text content",
+# )
+# async def create_text_document(
+#     request: TextDocumentCreate,
+#     current_user: CurrentUserDep,
+#     document_service: DocumentServiceDep,
+#     db: AsyncSession = Depends(get_db),
+# ) -> DocumentResponse:
+#     """Create a new document from text content."""
+#     try:
+#         # Create document with text content
+#         document = await document_service.create_text_document(
+#             user_id=current_user.id,
+#             data=request,
+#             db=db,
+#         )
+#         
+#         await db.commit()
+#         await db.refresh(document)
+#         
+#         # Convert folder_id to list for response
+#         folder_ids = [document.folder_id] if document.folder_id else []
+#         
+#         return DocumentResponse(
+#             id=document.id,
+#             user_id=document.user_id,
+#             filename=document.filename,
+#             file_size=document.file_size,
+#             file_hash=document.file_hash,
+#             status=document.status,
+#             created_at=document.created_at,
+#             extracted_text=document.extracted_text,
+#             word_count=document.word_count,
+#             folder_ids=folder_ids,
+#         )
+#         
+#     except Exception as e:
+#         await db.rollback()
+#         raise HTTPException(
+#             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+#             detail=f"Failed to create document: {str(e)}",
+#         )

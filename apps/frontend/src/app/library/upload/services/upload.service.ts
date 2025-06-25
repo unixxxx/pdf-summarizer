@@ -1,15 +1,15 @@
 import { Injectable, inject } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Observable, Subject, throwError, of } from 'rxjs';
-import { catchError, map, switchMap, tap, mergeMap } from 'rxjs/operators';
+import { catchError, map, switchMap } from 'rxjs/operators';
+import { UploadEvent } from '../store/state/upload';
 import {
-  UploadEvent,
-  PresignedUrlRequest,
-  PresignedUrlResponse,
-  CreateTextDocumentRequest,
-} from '../store/state/upload';
-import { S3UploadService } from './upload-s3.service';
-import { uploadConfig } from '../../../../environments/upload.config';
+  PresignedUrlRequestDto,
+  PresignedUrlResponseDto,
+  CreateTextDocumentRequestDto,
+  CompleteUploadRequestDto,
+  CompleteUploadResponseDto,
+} from '../dtos/upload';
 
 @Injectable({
   providedIn: 'root',
@@ -17,10 +17,6 @@ import { uploadConfig } from '../../../../environments/upload.config';
 export class UploadService {
   private http = inject(HttpClient);
   private uploadEvents$ = new Subject<UploadEvent>();
-  private s3Service = inject(S3UploadService);
-
-  // Configuration from centralized config
-  private config = uploadConfig;
 
   /**
    * Calculate SHA-256 hash of a file
@@ -40,6 +36,21 @@ export class UploadService {
    */
   uploadFile(file: File, folderId?: string): Observable<UploadEvent> {
     const fileId = crypto.randomUUID();
+    const maxFileSize = 500 * 1024 * 1024; // 500MB
+
+    // Check file size before starting
+    if (file.size > maxFileSize) {
+      const errorEvent: UploadEvent = {
+        type: 'error',
+        fileId,
+        fileName: file.name,
+        error: `File size exceeds maximum allowed size of 500MB. Your file is ${Math.round(
+          file.size / 1024 / 1024
+        )}MB.`,
+      };
+      this.uploadEvents$.next(errorEvent);
+      return throwError(() => new Error(errorEvent.error));
+    }
 
     // Emit start event
     this.uploadEvents$.next({
@@ -48,122 +59,121 @@ export class UploadService {
       fileName: file.name,
     });
 
-    // Determine upload method based on file size
-    const useMultipart = file.size > this.config.multipartThreshold;
-
     // Calculate file hash first
     return new Observable<UploadEvent>((observer) => {
       this.calculateFileHash(file)
         .then((fileHash) => {
-          // Direct S3 upload using presigned URL
+          let presignedData: PresignedUrlResponseDto;
+          let uploadCompleted = false;
+
+          // Get presigned POST URL
+          const contentType = file.type || (file.name.endsWith('.txt') ? 'text/plain' : 'application/pdf');
+          
           this.getPresignedUrl({
             filename: file.name,
             file_size: file.size,
-            content_type: file.type || 'application/pdf',
+            content_type: contentType,
             file_hash: fileHash,
             folder_id: folderId,
-            upload_method: useMultipart ? 'presigned_url' : 'presigned_post',
           })
             .pipe(
-              switchMap((presignedData) => {
-                if (
-                  presignedData.method === 'presigned_url' &&
-                  presignedData.bucket &&
-                  presignedData.key
-                ) {
-                  // Use multipart upload for large files
-                  if (presignedData.credentials) {
-                    this.s3Service.initializeClient({
-                      region: presignedData.credentials.region,
-                      endpoint: presignedData.credentials.endpoint,
-                    });
-                  }
-
-                  const key = presignedData.key; // TypeScript now knows this is defined
-                  return this.s3Service
-                    .uploadToS3(file, presignedData.bucket, key, fileId)
-                    .pipe(
-                      mergeMap((event) => {
-                        if (event.type === 'success') {
-                          // Complete the upload in backend
-                          return this.completeUpload({
-                            upload_id: presignedData.upload_id,
-                            document_id: presignedData.document_id,
-                            key: key,
-                            filename: file.name,
-                            file_size: file.size,
-                            folder_id: folderId,
-                          }).pipe(
-                            map((response) => ({
-                              type: 'success' as const,
-                              fileId,
-                              fileName: file.name,
-                              result: {
-                                documentId: response.document_id,
-                                fileName: file.name,
-                                fileSize: file.size,
-                                uploadedAt: new Date().toISOString(),
-                              },
-                            }))
-                          );
-                        }
-                        return of(event);
-                      })
-                    );
-                } else {
-                  // Use presigned POST for smaller files
-                  return this.s3Service
-                    .uploadWithPresignedPost(
-                      file,
-                      presignedData.upload_url,
-                      presignedData.fields,
-                      fileId
-                    )
-                    .pipe(
-                      mergeMap((event) => {
-                        if (event.type === 'success') {
-                          // Complete the upload in backend
-                          return this.completeUpload({
-                            upload_id: presignedData.upload_id,
-                            document_id: presignedData.document_id,
-                            key:
-                              presignedData.fields['key'] ||
-                              `uploads/${presignedData.upload_id}/${file.name}`,
-                            filename: file.name,
-                            file_size: file.size,
-                            folder_id: folderId,
-                          }).pipe(
-                            map((response) => ({
-                              type: 'success' as const,
-                              fileId,
-                              fileName: file.name,
-                              result: {
-                                documentId: response.document_id,
-                                fileName: file.name,
-                                fileSize: file.size,
-                                uploadedAt: new Date().toISOString(),
-                              },
-                            }))
-                          );
-                        }
-                        return of(event);
-                      })
-                    );
-                }
+              switchMap((data) => {
+                presignedData = data;
+                // Upload file using presigned POST
+                return this.uploadUsingPresignedPost(
+                  file,
+                  presignedData.upload_url,
+                  presignedData.fields,
+                  fileId
+                );
               }),
-              tap((event) => this.uploadEvents$.next(event)),
+              switchMap((event) => {
+                // Pass through progress events
+                if (event.type === 'progress' && event.stage === 'uploading') {
+                  return of(event);
+                }
+
+                // When upload is complete, call backend to finalize
+                if (
+                  event.type === 'progress' &&
+                  event.stage === 'processing' &&
+                  !uploadCompleted
+                ) {
+                  uploadCompleted = true;
+                  return this.completeUpload({
+                    upload_id: presignedData.upload_id,
+                    document_id: presignedData.document_id,
+                    key: presignedData.fields['key'],
+                    filename: file.name,
+                    file_size: file.size,
+                    folder_id: folderId,
+                  }).pipe(
+                    map((response) => ({
+                      type: 'success' as const,
+                      fileId,
+                      fileName: file.name,
+                      result: {
+                        documentId: response.document_id,
+                        fileName: file.name,
+                        fileSize: file.size,
+                        uploadedAt: new Date().toISOString(),
+                      },
+                    }))
+                  );
+                }
+
+                return of(event);
+              }),
               catchError((error) => {
+                let errorMessage = 'Upload failed';
+                
+                // Check various error response formats
+                if (error.error?.detail) {
+                  // Standard API error response format
+                  errorMessage = error.error.detail;
+                } else if (error.detail) {
+                  // Direct detail property
+                  errorMessage = error.detail;
+                } else if (error.error && typeof error.error === 'string') {
+                  // Plain string error
+                  errorMessage = error.error;
+                } else if (error.message) {
+                  // JavaScript error message
+                  errorMessage = error.message;
+                } else if (typeof error === 'string') {
+                  // Plain string
+                  errorMessage = error;
+                }
+                
+                // Clean up error message if it contains HTTP status prefix
+                const match = errorMessage.match(/^\d+:\s*(.+)$/);
+                if (match) {
+                  errorMessage = match[1];
+                }
+                
+                // Remove "Failed to generate upload URL:" prefix if present
+                if (errorMessage.startsWith('Failed to generate upload URL:')) {
+                  errorMessage = errorMessage.replace(/^Failed to generate upload URL:\s*\d*:\s*/, '');
+                }
+                
                 const errorEvent: UploadEvent = {
                   type: 'error',
                   fileId,
                   fileName: file.name,
-                  error: error.message || 'Upload failed',
+                  error: errorMessage,
                 };
                 this.uploadEvents$.next(errorEvent);
                 return throwError(() => error);
               })
             )
-            .subscribe(observer);
+            .subscribe({
+              next: (event) => {
+                observer.next(event);
+                this.uploadEvents$.next(event);
+              },
+              error: (error) => observer.error(error),
+              complete: () => observer.complete(),
+            });
         })
         .catch((error) => {
           const errorEvent: UploadEvent = {
@@ -182,75 +192,109 @@ export class UploadService {
    * Create a text document
    */
   createTextDocument(
-    document: CreateTextDocumentRequest
+    document: CreateTextDocumentRequestDto
   ): Observable<UploadEvent> {
-    const fileId = crypto.randomUUID();
-
-    // Emit start event
-    this.uploadEvents$.next({
-      type: 'start',
-      fileId,
-      fileName: document.title,
+    // Keep the original title with .txt extension for the filename
+    // The backend will handle any necessary sanitization for storage
+    const filename = `${document.title}.txt`;
+    
+    // Convert text content to a File object
+    const blob = new Blob([document.content], { type: 'text/plain' });
+    const file = new File([blob], filename, { 
+      type: 'text/plain',
+      lastModified: Date.now()
     });
-
-    return this.http
-      .post<{ id: string }>('/api/v1/document/text', document)
-      .pipe(
-        map((response) => {
-          const successEvent: UploadEvent = {
-            type: 'success',
-            fileId,
-            fileName: document.title,
-            result: {
-              documentId: response.id,
-              fileName: document.title,
-              fileSize: new Blob([document.content]).size,
-              uploadedAt: new Date().toISOString(),
-            },
-          };
-          this.uploadEvents$.next(successEvent);
-          return successEvent;
-        }),
-        catchError((error) => {
-          const errorEvent: UploadEvent = {
-            type: 'error',
-            fileId,
-            fileName: document.title,
-            error: error.error?.detail || 'Failed to create document',
-          };
-          this.uploadEvents$.next(errorEvent);
-          return throwError(() => error);
-        })
-      );
+    
+    // Use the same upload flow as regular files
+    return this.uploadFile(file, document.folder_id);
   }
 
   /**
    * Get presigned URL for file upload
    */
   private getPresignedUrl(
-    request: PresignedUrlRequest
-  ): Observable<PresignedUrlResponse> {
-    return this.http.post<PresignedUrlResponse>(
+    request: PresignedUrlRequestDto
+  ): Observable<PresignedUrlResponseDto> {
+    return this.http.post<PresignedUrlResponseDto>(
       '/api/v1/upload/presigned-url',
       request
     );
   }
 
   /**
+   * Upload file using presigned POST
+   */
+  private uploadUsingPresignedPost(
+    file: File,
+    uploadUrl: string,
+    fields: Record<string, string>,
+    fileId: string
+  ): Observable<UploadEvent> {
+    return new Observable<UploadEvent>((observer) => {
+      const formData = new FormData();
+
+      // Add all presigned fields to form data
+      Object.entries(fields).forEach(([key, value]) => {
+        formData.append(key, value);
+      });
+
+      // File must be added last
+      formData.append('file', file);
+
+      // Create XMLHttpRequest to track upload progress
+      const xhr = new XMLHttpRequest();
+
+      // Track upload progress
+      xhr.upload.addEventListener('progress', (event) => {
+        if (event.lengthComputable) {
+          const percentage = Math.round((event.loaded / event.total) * 100);
+          observer.next({
+            type: 'progress',
+            fileId,
+            fileName: file.name,
+            progress: percentage,
+            stage: 'uploading',
+          });
+        }
+      });
+
+      // Handle completion
+      xhr.addEventListener('load', () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          // Emit final progress event
+          observer.next({
+            type: 'progress',
+            fileId,
+            fileName: file.name,
+            progress: 100,
+            stage: 'processing',
+          });
+          // Don't complete here - let the outer observable handle completion
+        } else {
+          observer.error(new Error(`Upload failed with status ${xhr.status}`));
+        }
+      });
+
+      // Handle errors
+      xhr.addEventListener('error', () => {
+        observer.error(new Error('Upload failed'));
+      });
+
+      // Send the request
+      xhr.open('POST', uploadUrl);
+      xhr.send(formData);
+    });
+  }
+
+  /**
    * Complete the upload process
    */
-  private completeUpload(request: {
-    upload_id: string;
-    document_id: string;
-    key: string;
-    filename: string;
-    file_size: number;
-    folder_id?: string;
-  }): Observable<{ document_id: string }> {
-    return this.http.post<{ document_id: string }>(
+  private completeUpload(
+    request: CompleteUploadRequestDto
+  ): Observable<CompleteUploadResponseDto> {
+    return this.http.post<CompleteUploadResponseDto>(
       '/api/v1/upload/complete',
       request
     );
   }
-
 }

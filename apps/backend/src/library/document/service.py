@@ -5,10 +5,9 @@ from uuid import UUID
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from src.library.document.schemas import TextDocumentCreate
 
 from ...common.exceptions import NotFoundException
-from ...database.models import Document, DocumentStatus
+from ...database.models import Document, DocumentStatus, Folder
 
 
 class DocumentService:
@@ -113,49 +112,59 @@ class DocumentService:
         await db.flush()
         return document
 
-    async def create_text_document(
-        self,
-        user_id: UUID,
-        data: TextDocumentCreate,
-        db: AsyncSession,
-    ) -> Document:
-        """Create a document from text content."""
-        # Generate a unique filename
-        filename = f"{data.title}.txt"
+    # Note: This method is deprecated in favor of using the presigned URL upload flow
+    # async def create_text_document(
+    #     self,
+    #     user_id: UUID,
+    #     data: TextDocumentCreate,
+    #     db: AsyncSession,
+    # ) -> Document:
+    #     """Create a document from text content."""
+    #     # Generate a unique filename
+    #     filename = f"{data.title}.txt"
 
-        # Calculate file size and hash
-        content_bytes = data.content.encode("utf-8")
-        file_size = len(content_bytes)
-        file_hash = hashlib.sha256(content_bytes).hexdigest()
+    #     # Calculate file size and hash
+    #     content_bytes = data.content.encode("utf-8")
+    #     file_size = len(content_bytes)
+    #     file_hash = hashlib.sha256(content_bytes).hexdigest()
 
-        # Check for duplicate
-        result = await db.execute(
-            select(Document).where(
-                Document.user_id == user_id,
-                Document.file_hash == file_hash,
-                Document.archived_at.is_(None),
-            )
-        )
-        if result.scalar_one_or_none():
-            raise ValueError("Document with this content already exists")
+    #     # Check for duplicate
+    #     result = await db.execute(
+    #         select(Document).where(
+    #             Document.user_id == user_id,
+    #             Document.file_hash == file_hash,
+    #             Document.archived_at.is_(None),
+    #         )
+    #     )
+    #     if result.scalar_one_or_none():
+    #         raise ValueError("Document with this content already exists")
 
-        # Count words
-        word_count = len(data.content.split())
+    #     # Store text file in S3/storage
+    #     storage_key, stored_size = await self.storage_service.store_text_as_file(
+    #         text=data.content,
+    #         user_id=str(user_id),
+    #         title=data.title,
+    #     )
 
-        # Create document
-        document = Document(
-            user_id=user_id,
-            filename=filename,
-            file_size=file_size,
-            file_hash=file_hash,
-            folder_id=data.folder_id,
-            extracted_text=data.content,
-            word_count=word_count,
-        )
+    #     # Count words
+    #     word_count = len(data.content.split())
 
-        db.add(document)
-        await db.flush()
-        return document
+    #     # Create document
+    #     document = Document(
+    #         user_id=user_id,
+    #         filename=filename,
+    #         file_size=file_size,
+    #         file_hash=file_hash,
+    #         folder_id=data.folder_id,
+    #         storage_path=storage_key,
+    #         extracted_text=data.content,
+    #         word_count=word_count,
+    #         status=DocumentStatus.COMPLETED,
+    #     )
+
+    #     db.add(document)
+    #     await db.flush()
+    #     return document
 
     async def delete_document(
         self,
@@ -210,12 +219,30 @@ class DocumentService:
         existing_doc = result.scalar_one_or_none()
 
         if existing_doc:
-            # If document already exists and is completed, return it
-            if existing_doc.status == DocumentStatus.COMPLETED:
-                return existing_doc
-            # If it's still processing, we might want to handle this differently
-            # For now, return the existing document
-            return existing_doc
+            # Check if it's in the same folder or both are unfiled
+            same_location = (
+                (existing_doc.folder_id == folder_id) if folder_id 
+                else (existing_doc.folder_id is None)
+            )
+            
+            if same_location:
+                # Document with same content exists in the same location
+                folder_name = "unfiled"
+                if folder_id and existing_doc.folder_id:
+                    # Get folder name for better error message
+                    folder_result = await db.execute(
+                        select(Folder).where(Folder.id == folder_id)
+                    )
+                    folder = folder_result.scalar_one_or_none()
+                    if folder:
+                        folder_name = folder.name
+                
+                raise ValueError(
+                    f"A file with the same content already exists in {folder_name}: {existing_doc.filename}"
+                )
+            
+            # If document exists in a different location, allow the upload
+            # This enables users to have the same file in multiple folders
 
         # Create new document with uploading status
         document = Document(
@@ -271,6 +298,34 @@ class DocumentService:
         document.page_count = page_count
         document.status = DocumentStatus.COMPLETED
 
+        await db.flush()
+        return document
+
+    async def update_document_status(
+        self,
+        document_id: UUID,
+        status: str,
+        db: AsyncSession,
+    ) -> Document:
+        """Update document status."""
+        result = await db.execute(select(Document).where(Document.id == document_id))
+        document = result.scalar_one_or_none()
+
+        if not document:
+            raise NotFoundException("Document not found")
+
+        # Map string status to enum
+        status_map = {
+            "uploading": DocumentStatus.UPLOADING,
+            "processing": DocumentStatus.PROCESSING,
+            "completed": DocumentStatus.COMPLETED,
+            "failed": DocumentStatus.FAILED,
+        }
+        
+        if status not in status_map:
+            raise ValueError(f"Invalid status: {status}")
+            
+        document.status = status_map[status]
         await db.flush()
         return document
 

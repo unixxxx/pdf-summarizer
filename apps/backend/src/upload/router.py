@@ -6,7 +6,12 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..auth.dependencies import CurrentUserDep
-from ..common.exceptions import NotFoundException, StorageError, ValidationError
+from ..common.exceptions import (
+    BadRequestException,
+    NotFoundException,
+    StorageError,
+    ValidationError,
+)
 from ..config import get_settings
 from ..database.session import get_db
 from ..processing.dependencies import ProcessingOrchestratorDep
@@ -58,6 +63,9 @@ async def get_presigned_upload_url(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(e),
         )
+    except BadRequestException as e:
+        # Re-raise BadRequestException as it's already an HTTPException
+        raise e
     except StorageError as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

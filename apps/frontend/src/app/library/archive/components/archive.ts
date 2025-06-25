@@ -1,12 +1,11 @@
 import {
   Component,
-  OnInit,
   inject,
   ChangeDetectionStrategy,
   signal,
   computed,
 } from '@angular/core';
-
+import { Store } from '@ngrx/store';
 import {
   trigger,
   style,
@@ -14,22 +13,19 @@ import {
   animate,
   state,
 } from '@angular/animations';
-import { ArchiveStore } from '../archive.store';
-import { ArchivedDocument, ArchivedFolderWithChildren } from '../archive.model';
-import { ArchiveRestoreDialogComponent } from '../components/archive-restore-dialog.component';
-import { ArchiveEmptyDialogComponent } from '../components/archive-empty-dialog.component';
-import { ArchiveDeleteDialogComponent } from '../components/archive-delete-dialog.component';
-import { formatFileSize } from '../../../core/utils/file-size.formatter';
-import { formatDate } from '../../../core/utils/date.formatter';
+import { ArchiveActions } from '../store/archive.actions';
+import { archiveFeature } from '../store/archive.feature';
+import {
+  ArchivedDocument,
+  ArchivedFolderWithChildren,
+} from '../store/state/archive';
+import { FormatDatePipe } from '../../../core/pipes/formatDate';
+import { FormatFileSizePipe } from '../../../core/pipes/formatFileSize';
 
 @Component({
   selector: 'app-archive',
   standalone: true,
-  imports: [
-    ArchiveRestoreDialogComponent,
-    ArchiveEmptyDialogComponent,
-    ArchiveDeleteDialogComponent,
-  ],
+  imports: [FormatDatePipe, FormatFileSizePipe],
   changeDetection: ChangeDetectionStrategy.OnPush,
   animations: [
     trigger('fadeIn', [
@@ -57,21 +53,29 @@ import { formatDate } from '../../../core/utils/date.formatter';
     ]),
   ],
   template: `
+    @let statsData = stats(); @let foldersData = folders(); @let isEmptyData =
+    isEmpty(); @let canEmptyData = canEmpty(); @let isLoadingData = isLoading();
+
     <div class="h-screen flex flex-col">
       <!-- Stats Bar -->
-      @if (archiveStore.stats()) {
+      @if (statsData) {
       <div
         class="flex-shrink-0 px-4 sm:px-6 py-3 glass border-b border-border/50"
       >
         <div class="flex items-center justify-between">
           <div class="flex items-center gap-4 text-sm text-muted-foreground">
-            <span>{{ archiveStore.stats()!.total_documents }} documents</span>
+            <span>{{ statsData.totalDocuments || 0 }} documents</span>
             <span>•</span>
-            <span>{{ archiveStore.stats()!.total_folders }} folders</span>
+            <span>{{ statsData.totalFolders || 0 }} folders</span>
             <span>•</span>
-            <span>{{ formatFileSize(archiveStore.stats()!.total_size) }}</span>
+            <span>{{ statsData.totalSize || 0 | formatFileSize }}</span>
+            @if (statsData.totalDocuments > 0 && (!rootDocuments() ||
+            rootDocuments()!.length === 0) && foldersData.length > 0) {
+            <span>•</span>
+            <span class="text-xs">(documents are in folders)</span>
+            }
           </div>
-          @if (archiveStore.canEmpty()) {
+          @if (canEmptyData) {
           <button
             (click)="emptyArchive()"
             class="px-3 py-1.5 text-sm font-medium text-white bg-error hover:bg-error/90 rounded-lg transition-colors"
@@ -85,13 +89,13 @@ import { formatDate } from '../../../core/utils/date.formatter';
 
       <!-- Content -->
       <div class="flex-1 overflow-y-auto p-4 sm:p-6">
-        @if (archiveStore.loading()) {
+        @if (isLoadingData) {
         <div class="flex items-center justify-center h-64">
           <div
             class="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"
           ></div>
         </div>
-        } @else if (archiveStore.isEmpty()) {
+        } @else if (isEmptyData) {
         <div
           class="flex flex-col items-center justify-center h-64 text-muted-foreground"
         >
@@ -114,7 +118,7 @@ import { formatDate } from '../../../core/utils/date.formatter';
         } @else {
         <div class="space-y-2">
           <!-- Tree View for Folders and Root Documents -->
-          @for (folder of archiveStore.archivedFolders(); track folder.id) {
+          @for (folder of foldersData || []; track folder.id) {
           <div @listItem>
             <!-- Folder Item -->
             <div
@@ -123,11 +127,11 @@ import { formatDate } from '../../../core/utils/date.formatter';
               <div class="p-4">
                 <div class="flex items-center justify-between">
                   <div class="flex items-center gap-3 flex-1">
+                    @if (hasContents(folder)) {
                     <button
                       (click)="toggleFolder(folder.id)"
                       class="p-1 hover:bg-muted rounded transition-colors"
                       [class.rotate-90]="expandedFolders().has(folder.id)"
-                      [disabled]="!hasContents(folder)"
                     >
                       <svg
                         class="w-4 h-4 transition-transform"
@@ -143,6 +147,9 @@ import { formatDate } from '../../../core/utils/date.formatter';
                         />
                       </svg>
                     </button>
+                    } @else {
+                    <div class="w-6 h-6"></div>
+                    }
                     <svg
                       class="w-5 h-5 text-muted-foreground flex-shrink-0"
                       fill="none"
@@ -161,24 +168,23 @@ import { formatDate } from '../../../core/utils/date.formatter';
                         {{ folder.name }}
                       </p>
                       <p class="text-sm text-muted-foreground">
-                        Archived {{ formatDate(folder.archived_at) }}
-                        @if (folder.document_count > 0 || folder.children_count
-                        > 0) { • Contains: @if (folder.document_count > 0) {
-                        {{ folder.document_count }}
+                        Archived {{ folder.archivedAt | formatDate }}
+                        @if (folder.documentCount > 0 || folder.childrenCount >
+                        0) { • Contains: @if (folder.documentCount > 0) {
+                        {{ folder.documentCount }}
                         {{
-                          folder.document_count === 1 ? 'document' : 'documents'
+                          folder.documentCount === 1 ? 'document' : 'documents'
                         }}
-                        } @if (folder.document_count > 0 &&
-                        folder.children_count > 0) { , } @if
-                        (folder.children_count > 0) {
-                        {{ folder.children_count }}
+                        } @if (folder.documentCount > 0 && folder.childrenCount
+                        > 0) { , } @if (folder.childrenCount > 0) {
+                        {{ folder.childrenCount }}
                         {{
-                          folder.children_count === 1
+                          folder.childrenCount === 1
                             ? 'subfolder'
                             : 'subfolders'
                         }}
-                        } } @if (folder.parent_name) { • Was in
-                        {{ folder.parent_name }}
+                        } } @if (folder.parentName) { • Was in
+                        {{ folder.parentName }}
                         }
                       </p>
                     </div>
@@ -220,13 +226,13 @@ import { formatDate } from '../../../core/utils/date.formatter';
                     >
                       <div class="flex items-center justify-between px-3">
                         <div class="flex items-center gap-3 flex-1 min-w-0">
+                          @if (hasContents(childFolder)) {
                           <button
                             (click)="toggleFolder(childFolder.id)"
                             class="p-0.5 hover:bg-muted rounded transition-colors"
                             [class.rotate-90]="
                               expandedFolders().has(childFolder.id)
                             "
-                            [disabled]="!hasContents(childFolder)"
                           >
                             <svg
                               class="w-3 h-3 transition-transform"
@@ -242,6 +248,9 @@ import { formatDate } from '../../../core/utils/date.formatter';
                               />
                             </svg>
                           </button>
+                          } @else {
+                          <div class="w-4 h-4"></div>
+                          }
                           <svg
                             class="w-4 h-4 text-muted-foreground flex-shrink-0"
                             fill="none"
@@ -262,21 +271,21 @@ import { formatDate } from '../../../core/utils/date.formatter';
                               {{ childFolder.name }}
                             </p>
                             <p class="text-xs text-muted-foreground">
-                              @if (childFolder.document_count > 0 ||
-                              childFolder.children_count > 0) { Contains: @if
-                              (childFolder.document_count > 0) {
-                              {{ childFolder.document_count }}
+                              @if (childFolder.documentCount > 0 ||
+                              childFolder.childrenCount > 0) { Contains: @if
+                              (childFolder.documentCount > 0) {
+                              {{ childFolder.documentCount }}
                               {{
-                                childFolder.document_count === 1
+                                childFolder.documentCount === 1
                                   ? 'document'
                                   : 'documents'
                               }}
-                              } @if (childFolder.document_count > 0 &&
-                              childFolder.children_count > 0) { , } @if
-                              (childFolder.children_count > 0) {
-                              {{ childFolder.children_count }}
+                              } @if (childFolder.documentCount > 0 &&
+                              childFolder.childrenCount > 0) { , } @if
+                              (childFolder.childrenCount > 0) {
+                              {{ childFolder.childrenCount }}
                               {{
-                                childFolder.children_count === 1
+                                childFolder.childrenCount === 1
                                   ? 'subfolder'
                                   : 'subfolders'
                               }}
@@ -346,9 +355,9 @@ import { formatDate } from '../../../core/utils/date.formatter';
                                   {{ doc.name }}
                                 </p>
                                 <p class="text-xs text-muted-foreground">
-                                  {{ formatFileSize(doc.file_size) }}
-                                  @if (doc.page_count) { • {{ doc.page_count }}
-                                  {{ doc.page_count === 1 ? 'page' : 'pages' }}
+                                  {{ doc.fileSize | formatFileSize }}
+                                  @if (doc.pageCount) { • {{ doc.pageCount }}
+                                  {{ doc.pageCount === 1 ? 'page' : 'pages' }}
                                   }
                                 </p>
                               </div>
@@ -408,9 +417,9 @@ import { formatDate } from '../../../core/utils/date.formatter';
                             {{ doc.name }}
                           </p>
                           <p class="text-xs text-muted-foreground">
-                            {{ formatFileSize(doc.file_size) }}
-                            @if (doc.page_count) { • {{ doc.page_count }}
-                            {{ doc.page_count === 1 ? 'page' : 'pages' }}
+                            {{ doc.fileSize | formatFileSize }}
+                            @if (doc.pageCount) { • {{ doc.pageCount }}
+                            {{ doc.pageCount === 1 ? 'page' : 'pages' }}
                             }
                           </p>
                         </div>
@@ -445,7 +454,8 @@ import { formatDate } from '../../../core/utils/date.formatter';
           }
 
           <!-- Root Documents (not in any folder) -->
-          @for (doc of rootDocuments(); track doc.id) {
+          <!-- Note: Documents inside archived folders are shown nested within their folders above -->
+          @for (doc of rootDocuments() || []; track doc.id) {
           <div
             @listItem
             class="glass rounded-xl p-4 hover:shadow-lg transition-all group"
@@ -470,10 +480,10 @@ import { formatDate } from '../../../core/utils/date.formatter';
                 <div>
                   <p class="font-medium text-foreground">{{ doc.name }}</p>
                   <p class="text-sm text-muted-foreground">
-                    {{ formatFileSize(doc.file_size) }} • Archived
-                    {{ formatDate(doc.archived_at) }} @if (doc.page_count) { •
-                    {{ doc.page_count }}
-                    {{ doc.page_count === 1 ? 'page' : 'pages' }}
+                    {{ doc.fileSize | formatFileSize }} • Archived
+                    {{ doc.archivedAt | formatDate }} @if (doc.pageCount) { •
+                    {{ doc.pageCount }}
+                    {{ doc.pageCount === 1 ? 'page' : 'pages' }}
                     }
                   </p>
                 </div>
@@ -500,158 +510,65 @@ import { formatDate } from '../../../core/utils/date.formatter';
         }
       </div>
     </div>
-
-    <!-- Restore Confirmation Dialog -->
-    <app-archive-restore-dialog
-      [show]="showRestoreDialog()"
-      [itemName]="restoreItem()?.name || ''"
-      [isFolder]="restoreItemIsFolder()"
-      [parentName]="restoreItemParentName()"
-      [documentCount]="restoreItemDocumentCount()"
-      [childrenCount]="restoreItemChildrenCount()"
-      (confirm)="confirmRestore()"
-      (canceled)="cancelRestore()"
-    />
-
-    <!-- Empty Archive Confirmation Dialog -->
-    <app-archive-empty-dialog
-      [show]="showEmptyDialog()"
-      [documentCount]="archiveStore.stats()?.total_documents || 0"
-      [folderCount]="archiveStore.stats()?.total_folders || 0"
-      [totalSize]="archiveStore.stats()?.total_size || 0"
-      (confirm)="confirmEmptyArchive()"
-      (canceled)="cancelEmptyArchive()"
-    />
-
-    <!-- Delete Item Confirmation Dialog -->
-    <app-archive-delete-dialog
-      [show]="showDeleteDialog()"
-      [itemName]="deleteItem()?.name || ''"
-      [isFolder]="deleteItemIsFolder()"
-      [documentCount]="deleteItemDocumentCount()"
-      [childrenCount]="deleteItemChildrenCount()"
-      (confirm)="confirmDelete()"
-      (canceled)="cancelDelete()"
-    />
   `,
 })
-export class ArchiveComponent implements OnInit {
-  protected archiveStore = inject(ArchiveStore);
+export class ArchiveComponent {
+  protected readonly store = inject(Store);
 
-  formatFileSize = formatFileSize;
-  formatDate = formatDate;
-
-  // Restore dialog state
-  showRestoreDialog = signal(false);
-  restoreItem = signal<ArchivedDocument | ArchivedFolderWithChildren | null>(
-    null
+  // Store signals
+  protected readonly archive = this.store.selectSignal(
+    archiveFeature.selectArchive
   );
-  restoreItemType = signal<'document' | 'folder'>('document');
-
-  // Empty archive dialog state
-  showEmptyDialog = signal(false);
-
-  // Delete dialog state
-  showDeleteDialog = signal(false);
-  deleteItem = signal<ArchivedDocument | ArchivedFolderWithChildren | null>(
-    null
+  protected readonly stats = this.store.selectSignal(
+    archiveFeature.selectArchiveStats
   );
-  deleteItemType = signal<'document' | 'folder'>('document');
+  protected readonly folders = this.store.selectSignal(
+    archiveFeature.selectArchivedFolders
+  );
+  protected readonly rootDocuments = this.store.selectSignal(
+    archiveFeature.selectRootDocuments
+  );
+  protected readonly isEmpty = this.store.selectSignal(
+    archiveFeature.selectIsArchiveEmpty
+  );
+  protected readonly canEmpty = this.store.selectSignal(
+    archiveFeature.selectCanEmptyArchive
+  );
+
+  // Computed signals for loading state
+  protected readonly isLoading = computed(
+    () => this.archive()?.state === 'loading'
+  );
 
   // Tree view state
   expandedFolders = signal(new Set<string>());
 
-  // Computed property for root documents
-  rootDocuments = computed(() => {
-    const allDocs = this.archiveStore.archivedDocuments();
-    const folderDocs = new Set<string>();
-
-    // Collect all document IDs that are in folders
-    this.archiveStore.archivedFolders().forEach((folder) => {
-      folder.documents?.forEach((doc) => folderDocs.add(doc.id));
-    });
-
-    // Return only documents not in any folder
-    return allDocs.filter((doc) => !folderDocs.has(doc.id));
-  });
-
-  // Computed properties for dialog
-  restoreItemIsFolder = () => this.restoreItemType() === 'folder';
-  restoreItemParentName = () => {
-    const item = this.restoreItem();
-    if (!item) return null;
-    if ('parent_name' in item) {
-      return item.parent_name;
-    } else if ('folder_name' in item) {
-      return item.folder_name;
-    }
-    return null;
-  };
-  restoreItemDocumentCount = () => {
-    const item = this.restoreItem();
-    return item && 'document_count' in item ? item.document_count : 0;
-  };
-  restoreItemChildrenCount = () => {
-    const item = this.restoreItem();
-    return item && 'children_count' in item ? item.children_count : 0;
-  };
-
-  // Computed properties for delete dialog
-  deleteItemIsFolder = () => this.deleteItemType() === 'folder';
-  deleteItemDocumentCount = () => {
-    const item = this.deleteItem();
-    return item && 'document_count' in item ? item.document_count : 0;
-  };
-  deleteItemChildrenCount = () => {
-    const item = this.deleteItem();
-    return item && 'children_count' in item ? item.children_count : 0;
-  };
-
-  ngOnInit() {
-    this.archiveStore.loadArchiveContent();
-  }
-
   restoreFolder(folder: ArchivedFolderWithChildren) {
-    this.restoreItem.set(folder);
-    this.restoreItemType.set('folder');
-    this.showRestoreDialog.set(true);
+    this.store.dispatch(
+      ArchiveActions.openRestoreFolderModalCommand({ folder })
+    );
   }
 
   restoreDocument(doc: ArchivedDocument) {
-    this.restoreItem.set(doc);
-    this.restoreItemType.set('document');
-    this.showRestoreDialog.set(true);
+    this.store.dispatch(
+      ArchiveActions.openRestoreDocumentModalCommand({ document: doc })
+    );
   }
 
-  confirmRestore() {
-    const item = this.restoreItem();
-    if (!item) return;
-
-    if (this.restoreItemType() === 'folder') {
-      this.archiveStore.restoreFolder(item as ArchivedFolderWithChildren);
-    } else {
-      this.archiveStore.restoreDocument(item as ArchivedDocument);
-    }
-
-    this.cancelRestore();
+  deleteFolder(folder: ArchivedFolderWithChildren) {
+    this.store.dispatch(
+      ArchiveActions.openDeleteFolderModalCommand({ folder })
+    );
   }
 
-  cancelRestore() {
-    this.showRestoreDialog.set(false);
-    this.restoreItem.set(null);
+  deleteDocument(doc: ArchivedDocument) {
+    this.store.dispatch(
+      ArchiveActions.openDeleteDocumentModalCommand({ document: doc })
+    );
   }
 
   emptyArchive() {
-    this.showEmptyDialog.set(true);
-  }
-
-  confirmEmptyArchive() {
-    this.archiveStore.emptyArchive();
-    this.cancelEmptyArchive();
-  }
-
-  cancelEmptyArchive() {
-    this.showEmptyDialog.set(false);
+    this.store.dispatch(ArchiveActions.openEmptyArchiveModalCommand());
   }
 
   toggleFolder(folderId: string) {
@@ -666,35 +583,5 @@ export class ArchiveComponent implements OnInit {
 
   hasContents(folder: ArchivedFolderWithChildren): boolean {
     return folder.children?.length > 0 || folder.documents?.length > 0;
-  }
-
-  deleteFolder(folder: ArchivedFolderWithChildren) {
-    this.deleteItem.set(folder);
-    this.deleteItemType.set('folder');
-    this.showDeleteDialog.set(true);
-  }
-
-  deleteDocument(doc: ArchivedDocument) {
-    this.deleteItem.set(doc);
-    this.deleteItemType.set('document');
-    this.showDeleteDialog.set(true);
-  }
-
-  confirmDelete() {
-    const item = this.deleteItem();
-    if (!item) return;
-
-    if (this.deleteItemType() === 'folder') {
-      this.archiveStore.deleteFolder(item as ArchivedFolderWithChildren);
-    } else {
-      this.archiveStore.deleteDocument(item as ArchivedDocument);
-    }
-
-    this.cancelDelete();
-  }
-
-  cancelDelete() {
-    this.showDeleteDialog.set(false);
-    this.deleteItem.set(null);
   }
 }

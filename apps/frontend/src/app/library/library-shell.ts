@@ -16,18 +16,14 @@ import {
 } from '@angular/animations';
 import { RouterOutlet } from '@angular/router';
 import { FolderSidebar } from './folder/components/folder-sidebar';
-import { DocumentDeleteDialogComponent } from './documents/components/document-delete-dialog.component';
+import { DocumentDeleteDialogComponent } from './documents/components/document-delete-dialog';
 import { UIStore } from '../shared/ui.store';
 import { LibraryStore } from './library.store';
 
 @Component({
   selector: 'app-library-shell',
   standalone: true,
-  imports: [
-    RouterOutlet,
-    FolderSidebar,
-    DocumentDeleteDialogComponent,
-  ],
+  imports: [RouterOutlet, FolderSidebar, DocumentDeleteDialogComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   animations: [
     trigger('sidebarAnimation', [
@@ -103,7 +99,9 @@ import { LibraryStore } from './library.store';
         <!-- Right Content - Router Outlet -->
         <div
           class="flex-1 transition-all duration-300 ease-in-out"
-          [style.margin-left.rem]="!isMobile() ? (uiStore.sidebarCollapsed() ? 3.5 : 16) : 0"
+          [style.margin-left.rem]="
+            !isMobile() ? (uiStore.sidebarCollapsed() ? 3.5 : 16) : 0
+          "
         >
           <router-outlet class="h-full" />
         </div>
@@ -112,7 +110,6 @@ import { LibraryStore } from './library.store';
 
     <!-- Dialogs -->
     <app-document-delete-dialog />
-
   `,
 })
 export class LibraryShell {

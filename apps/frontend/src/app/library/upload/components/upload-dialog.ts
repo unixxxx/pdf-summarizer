@@ -1,4 +1,4 @@
-import { Component, inject, signal } from '@angular/core';
+import { Component, inject, signal, computed } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { Store } from '@ngrx/store';
 import { UploadActions } from '../store/upload.actions';
@@ -101,7 +101,7 @@ import { NgClass } from '@angular/common';
               <input
                 #fileInput
                 type="file"
-                accept=".pdf"
+                accept=".pdf,.txt"
                 (change)="onFileSelected($event)"
                 class="hidden"
               />
@@ -119,7 +119,7 @@ import { NgClass } from '@angular/common';
                 />
               </svg>
               <p class="text-muted-foreground mb-2">
-                Drag and drop your PDF here, or
+                Drag and drop your PDF or text file here, or
               </p>
               <button
                 (click)="fileInput.click()"
@@ -128,7 +128,7 @@ import { NgClass } from '@angular/common';
                 browse files
               </button>
               <p class="text-sm text-muted-foreground mt-2">
-                Maximum file size: 10MB
+                Maximum file size: 500MB
               </p>
             </div>
             <!-- Selected File -->
@@ -137,6 +137,7 @@ import { NgClass } from '@angular/common';
               class="flex items-center justify-between p-4 bg-muted rounded-lg"
             >
               <div class="flex items-center space-x-3">
+                @if (selectedFile()!.type === 'application/pdf') {
                 <svg
                   class="w-8 h-8 text-red-500"
                   fill="currentColor"
@@ -148,6 +149,21 @@ import { NgClass } from '@angular/common';
                     clip-rule="evenodd"
                   />
                 </svg>
+                } @else {
+                <svg
+                  class="w-8 h-8 text-blue-500"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                  />
+                </svg>
+                }
                 <div>
                   <p class="font-medium text-foreground">
                     {{ selectedFile()!.name }}
@@ -230,9 +246,7 @@ import { NgClass } from '@angular/common';
             <p class="text-sm font-medium text-foreground">
               {{ currentFileName() || 'Processing...' }}
             </p>
-            <p class="text-sm text-muted-foreground">
-              {{ getProgressText() }}
-            </p>
+            <p class="text-sm text-muted-foreground">{{ uploadProgress() }}%</p>
           </div>
           <div class="w-full bg-muted rounded-full h-2 overflow-hidden">
             <div
@@ -241,12 +255,12 @@ import { NgClass } from '@angular/common';
             ></div>
           </div>
         </div>
-        } @if (error() && !isUploading()) {
+        } @if ((error() && !isUploading()) || fileValidationError()) {
         <div
           class="p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg"
         >
           <p class="text-sm text-red-600 dark:text-red-400">
-            {{ error() }}
+            {{ fileValidationError() || error() }}
           </p>
         </div>
         }
@@ -337,7 +351,7 @@ import { NgClass } from '@angular/common';
     `,
   ],
 })
-export class UploadDialogComponent {
+export class UploadDialog {
   private store = inject(Store);
   private modalRef = inject<ModalRef>(MODAL_REF);
 
@@ -358,9 +372,33 @@ export class UploadDialogComponent {
   );
   error = this.store.selectSignal(uploadFeature.selectUploadError);
 
+  // Validation error for selected file
+  fileValidationError = computed(() => {
+    const file = this.selectedFile();
+    if (!file) return null;
+
+    const maxFileSize = 500 * 1024 * 1024; // 500MB
+    if (file.size > maxFileSize) {
+      return `File size exceeds maximum allowed size of 500MB. Your file is ${Math.round(
+        file.size / 1024 / 1024
+      )}MB.`;
+    }
+
+    if (file.type !== 'application/pdf' && file.type !== 'text/plain') {
+      return 'Please select a PDF or text file.';
+    }
+
+    return null;
+  });
+
   canUpload(): boolean {
     if (this.activeTab() === 'file') {
-      return this.selectedFile() !== null;
+      const file = this.selectedFile();
+      if (!file) return false;
+
+      // Check file size
+      const maxFileSize = 500 * 1024 * 1024; // 500MB
+      return file.size <= maxFileSize;
     } else {
       return (
         this.textDocument.title.trim() !== '' &&
@@ -389,7 +427,7 @@ export class UploadDialogComponent {
     const files = event.dataTransfer?.files;
     if (files && files.length > 0) {
       const file = files[0];
-      if (file.type === 'application/pdf') {
+      if (file.type === 'application/pdf' || file.type === 'text/plain') {
         this.selectedFile.set(file);
       }
     }
@@ -432,13 +470,6 @@ export class UploadDialogComponent {
         })
       );
     }
-  }
-
-  getProgressText(): string {
-    if (this.uploadProgress() === 100) {
-      return 'Processing...';
-    }
-    return `${this.uploadProgress()}%`;
   }
 
   close(): void {

@@ -108,18 +108,23 @@ class ArchiveService:
             )
         )
         folder_doc_result = await db.execute(folder_doc_query)
-        docs_in_deleted_folders = {row[0] for row in folder_doc_result}
+        docs_in_archived_folders = {row[0] for row in folder_doc_result}
         
-        # Now get all archived documents excluding those in archived folders
+        # Now get all archived documents that either:
+        # 1. Have no folder_id (standalone documents)
+        # 2. Are in non-archived folders 
+        # 3. Are not in the set of documents within archived folders
+        conditions = [
+            Document.user_id == user.id,
+            Document.archived_at.isnot(None)
+        ]
+        
+        if docs_in_archived_folders:
+            conditions.append(Document.id.notin_(docs_in_archived_folders))
+        
         query = (
             select(Document)
-            .where(
-                and_(
-                    Document.user_id == user.id,
-                    Document.archived_at.isnot(None),
-                    Document.id.notin_(docs_in_deleted_folders) if docs_in_deleted_folders else True
-                )
-            )
+            .where(and_(*conditions))
             .order_by(Document.archived_at.desc())
         )
         result = await db.execute(query)
@@ -191,6 +196,21 @@ class ArchiveService:
             archived_children = [c for c in folder.children if c.archived_at is not None and c.id in all_folders_map]
             children_count = len(archived_children)
             
+            # Convert archived documents to ArchivedDocument schema
+            archived_docs = []
+            for doc in folder.documents:
+                if doc.archived_at is not None:
+                    archived_docs.append(ArchivedDocument(
+                        id=doc.id,
+                        name=doc.filename,
+                        archived_at=doc.archived_at,
+                        user_id=doc.user_id,
+                        file_size=doc.file_size,
+                        page_count=doc.page_count,
+                        folder_id=folder.id,
+                        folder_name=folder.name
+                    ))
+            
             folder_obj = ArchivedFolderWithChildren(
                 id=folder.id,
                 name=folder.name,
@@ -201,7 +221,8 @@ class ArchiveService:
                 user_id=folder.user_id,
                 document_count=doc_count,
                 children_count=children_count,
-                children=[]
+                children=[],
+                documents=archived_docs
             )
             folder_map[folder.id] = folder_obj
             

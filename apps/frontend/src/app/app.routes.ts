@@ -12,6 +12,8 @@ import { tagFeature } from './library/tag/store/tag.feature';
 import { TagEffects } from './library/tag/store/tag.effects';
 import { uploadFeature } from './library/upload/store/upload.feature';
 import { UploadEffects } from './library/upload/store/upload.effects';
+import { archiveFeature } from './library/archive/store/archive.feature';
+import { ArchiveEffects } from './library/archive/store/archive.effects';
 
 export const routes: Routes = [
   {
@@ -53,7 +55,13 @@ export const routes: Routes = [
           provideState(folderFeature),
           provideState(tagFeature),
           provideState(uploadFeature),
-          provideEffects(FolderEffects, TagEffects, UploadEffects),
+          provideState(archiveFeature),
+          provideEffects(
+            FolderEffects,
+            TagEffects,
+            UploadEffects,
+            ArchiveEffects
+          ),
         ],
         resolve: {
           init: () => {
@@ -66,14 +74,12 @@ export const routes: Routes = [
       },
       {
         path: 'chat',
-        loadComponent: () =>
-          import('./chat/chat.component').then((m) => m.ChatComponent),
+        loadComponent: () => import('./chat/chat').then((m) => m.ChatComponent),
         data: { animation: 'chat' },
       },
       {
         path: 'chat/:chatId',
-        loadComponent: () =>
-          import('./chat/chat.component').then((m) => m.ChatComponent),
+        loadComponent: () => import('./chat/chat').then((m) => m.ChatComponent),
         data: { animation: 'chat' },
       },
     ],

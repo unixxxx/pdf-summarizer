@@ -11,7 +11,7 @@ import { CommonModule } from '@angular/common';
 import { LibraryItem, DocumentStatus } from '../document.model';
 import { formatFileSize } from '../../../core/utils/file-size.formatter';
 import { formatRelativeDate } from '../../../core/utils/date.formatter';
-import { TagListComponent } from '../../tag/components/tag-list.component';
+import { TagListComponent } from '../../tag/components/tag-list';
 import { LibraryStore } from '../../library.store';
 
 @Component({

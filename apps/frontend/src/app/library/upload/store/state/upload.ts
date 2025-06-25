@@ -1,4 +1,11 @@
-// Domain models for upload functionality
+import { ToCamelCase } from '../../../../core/utils/transform';
+import {
+  PresignedUrlRequestDto,
+  PresignedUrlResponseDto,
+  CreateTextDocumentRequestDto,
+} from '../../dtos/upload';
+
+// Component interfaces for upload functionality
 
 export interface UploadResult {
   documentId: string;
@@ -24,37 +31,10 @@ export interface UploadEvent {
   result?: UploadResult;
 }
 
-export type UploadMethod = 'presigned_post' | 'presigned_url';
-
-export interface PresignedUrlRequest {
-  filename: string;
-  file_size: number;
-  content_type: string;
-  file_hash: string;
-  folder_id?: string;
-  upload_method?: UploadMethod;
-}
-
-export interface PresignedUrlResponse {
-  upload_url: string;
-  upload_id: string;
-  document_id: string;
-  fields: Record<string, string>;
-  expires_at: string;
-  method: UploadMethod;
-  // For multipart uploads
-  bucket?: string;
-  key?: string;
-  credentials?: {
-    region: string;
-    endpoint?: string;
-  };
-}
-
-export interface CreateTextDocumentRequest {
-  title: string;
-  content: string;
-  folder_id?: string;
-}
-
 export type UploadType = 'file' | 'text';
+
+// Type aliases for cleaner code
+export type PresignedUrlRequest = ToCamelCase<PresignedUrlRequestDto>;
+export type PresignedUrlResponse = ToCamelCase<PresignedUrlResponseDto>;
+export type CreateTextDocumentRequest =
+  ToCamelCase<CreateTextDocumentRequestDto>;

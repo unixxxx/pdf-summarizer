@@ -1,13 +1,13 @@
 import { Injectable, inject } from '@angular/core';
 import { Actions, createEffect, ofType } from '@ngrx/effects';
 import { Store } from '@ngrx/store';
-import { map, catchError, mergeMap, tap, concatMap } from 'rxjs/operators';
+import { mergeMap, tap, concatMap } from 'rxjs/operators';
 import { of, concat } from 'rxjs';
 import { UploadActions } from './upload.actions';
 import { UploadService } from '../services/upload.service';
 import { ModalService } from '../../../core/services/modal';
-import { UploadDialogComponent } from '../components/upload-dialog.component';
-import { concatLatestFrom } from '@ngrx/operators';
+import { UploadDialog } from '../components/upload-dialog';
+import { concatLatestFrom, mapResponse } from '@ngrx/operators';
 import { folderFeature } from '../../folder/store/folder.feature';
 
 @Injectable()
@@ -37,50 +37,65 @@ export class UploadEffects {
           ),
           // Then handle the upload stream
           this.uploadService.uploadFile(file, folderId).pipe(
-            map((event) => {
-              switch (event.type) {
-                case 'progress':
-                  return UploadActions.uploadFileProgressEvent({
-                    progress: {
-                      fileId: event.fileId || fileId,
-                      fileName: event.fileName || file.name,
-                      progress: event.progress || 0,
-                      stage: event.stage,
-                    },
-                  });
-                case 'success':
-                  if (!event.result) {
+            mapResponse({
+              next: (event) => {
+                switch (event.type) {
+                  case 'progress':
+                    return UploadActions.uploadFileProgressEvent({
+                      progress: {
+                        fileId: event.fileId || fileId,
+                        fileName: event.fileName || file.name,
+                        progress: event.progress || 0,
+                        stage: event.stage,
+                      },
+                    });
+                  case 'success':
+                    if (!event.result) {
+                      return UploadActions.uploadFileFailureEvent({
+                        error: 'Upload succeeded but no result returned',
+                        fileName: file.name,
+                      });
+                    }
+                    return UploadActions.uploadFileSuccessEvent({
+                      result: event.result,
+                    });
+                  case 'error':
                     return UploadActions.uploadFileFailureEvent({
-                      error: 'Upload succeeded but no result returned',
+                      error: event.error || 'Upload failed',
                       fileName: file.name,
                     });
-                  }
-                  return UploadActions.uploadFileSuccessEvent({
-                    result: event.result,
-                  });
-                case 'error':
-                  return UploadActions.uploadFileFailureEvent({
-                    error: event.error || 'Upload failed',
-                    fileName: file.name,
-                  });
-                default:
-                  return UploadActions.uploadFileProgressEvent({
-                    progress: {
-                      fileId: event.fileId || fileId,
-                      fileName: event.fileName || file.name,
-                      progress: 0,
-                    },
-                  });
-              }
-            }),
-            catchError((error) =>
-              of(
-                UploadActions.uploadFileFailureEvent({
-                  error: error.message || 'Upload failed',
+                  default:
+                    return UploadActions.uploadFileProgressEvent({
+                      progress: {
+                        fileId: event.fileId || fileId,
+                        fileName: event.fileName || file.name,
+                        progress: 0,
+                      },
+                    });
+                }
+              },
+              error: (error: {
+                error?: { detail?: string };
+                detail?: string;
+                message?: string;
+              }) => {
+                // Extract error message from various possible formats
+                let errorMessage = 'Upload failed';
+
+                if (error.error?.detail) {
+                  errorMessage = error.error.detail;
+                } else if (error.detail) {
+                  errorMessage = error.detail;
+                } else if (error.message) {
+                  errorMessage = error.message;
+                }
+
+                return UploadActions.uploadFileFailureEvent({
+                  error: errorMessage,
                   fileName: file.name,
-                })
-              )
-            )
+                });
+              },
+            })
           )
         );
       })
@@ -105,32 +120,66 @@ export class UploadEffects {
           this.uploadService
             .createTextDocument({ content, title, folder_id: folderId })
             .pipe(
-              map((event) => {
-                if (event.type === 'success') {
-                  if (!event.result) {
-                    return UploadActions.createTextDocumentFailureEvent({
-                      error: 'Document created but no result returned',
-                      fileName: title,
-                    });
+              mapResponse({
+                next: (event) => {
+                  switch (event.type) {
+                    case 'progress':
+                      return UploadActions.uploadFileProgressEvent({
+                        progress: {
+                          fileId: event.fileId || crypto.randomUUID(),
+                          fileName: event.fileName || title,
+                          progress: event.progress || 0,
+                          stage: event.stage,
+                        },
+                      });
+                    case 'success':
+                      if (!event.result) {
+                        return UploadActions.createTextDocumentFailureEvent({
+                          error: 'Document created but no result returned',
+                          fileName: title,
+                        });
+                      }
+                      return UploadActions.createTextDocumentSuccessEvent({
+                        result: event.result,
+                      });
+                    case 'error':
+                      return UploadActions.createTextDocumentFailureEvent({
+                        error: event.error || 'Failed to create document',
+                        fileName: title,
+                      });
+                    default:
+                      // Handle any other event types as progress
+                      return UploadActions.uploadFileProgressEvent({
+                        progress: {
+                          fileId: event.fileId || crypto.randomUUID(),
+                          fileName: event.fileName || title,
+                          progress: 0,
+                        },
+                      });
                   }
-                  return UploadActions.createTextDocumentSuccessEvent({
-                    result: event.result,
-                  });
-                } else {
+                },
+                error: (error: {
+                  error?: { detail?: string };
+                  detail?: string;
+                  message?: string;
+                }) => {
+                  // Extract error message from various possible formats
+                  let errorMessage = 'Failed to create document';
+
+                  if (error.error?.detail) {
+                    errorMessage = error.error.detail;
+                  } else if (error.detail) {
+                    errorMessage = error.detail;
+                  } else if (error.message) {
+                    errorMessage = error.message;
+                  }
+
                   return UploadActions.createTextDocumentFailureEvent({
-                    error: event.error || 'Failed to create document',
+                    error: errorMessage,
                     fileName: title,
                   });
-                }
-              }),
-              catchError((error) =>
-                of(
-                  UploadActions.createTextDocumentFailureEvent({
-                    error: error.message || 'Failed to create document',
-                    fileName: title,
-                  })
-                )
-              )
+                },
+              })
             )
         )
       )
@@ -138,50 +187,39 @@ export class UploadEffects {
   );
 
   // Open upload dialog
-  openUploadDialog$ = createEffect(
-    () =>
-      this.actions$.pipe(
-        ofType(UploadActions.openUploadDialogCommand),
-        tap(async () => {
-          await this.modalService.create({
-            component: UploadDialogComponent,
-            backdropDismiss: true,
-            animated: true,
-            cssClass: 'upload-modal',
-          });
-        })
-      ),
-    { dispatch: false }
-  );
-
-  // Show error notifications
-  showErrorNotification$ = createEffect(
-    () =>
-      this.actions$.pipe(
-        ofType(
-          UploadActions.uploadFileFailureEvent,
-          UploadActions.createTextDocumentFailureEvent
-        ),
-        tap(() => {
-          // TODO: Integrate with a notification service
-        })
-      ),
-    { dispatch: false }
-  );
-
-  // Handle successful upload - close modal and reset state
-  handleUploadSuccess$ = createEffect(() =>
+  openUploadDialog$ = createEffect(() =>
     this.actions$.pipe(
-      ofType(
-        UploadActions.uploadFileSuccessEvent,
-        UploadActions.createTextDocumentSuccessEvent
-      ),
+      ofType(UploadActions.openUploadDialogCommand),
       concatMap(async () => {
-        // Close the modal immediately
-        await this.modalService.dismiss();
-        // Return action to reset state
+        const modal = await this.modalService.create({
+          component: UploadDialog,
+          backdropDismiss: true,
+          animated: true,
+          cssClass: 'upload-modal',
+        });
+
+        // Wait for modal to be dismissed
+        await modal.onDidDismiss();
+
+        // Return reset action after modal is dismissed
         return UploadActions.resetUploadStateCommand();
       })
     )
+  );
+
+  // Handle successful upload - close modal and reset state
+  handleUploadSuccess$ = createEffect(
+    () =>
+      this.actions$.pipe(
+        ofType(
+          UploadActions.uploadFileSuccessEvent,
+          UploadActions.createTextDocumentSuccessEvent
+        ),
+        tap(async () => {
+          // Close the modal immediately
+          await this.modalService.dismiss();
+        })
+      ),
+    { dispatch: false }
   );
 }
