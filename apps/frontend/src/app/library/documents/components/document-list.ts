@@ -23,11 +23,13 @@ import { FolderActions } from '../../folder/store/folder.actions';
   imports: [FormsModule, DocumentSearchComponent, DocumentCardComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <!-- Search Bar -->
-    <app-document-search (uploadClick)="openUploadDialog()" />
+    <div class="h-full flex flex-col">
+      <!-- Search Bar -->
+      <app-document-search (uploadClick)="openUploadDialog()" />
 
-    <!-- Document Grid -->
-    <div class="p-6">
+      <!-- Document Grid -->
+      <div class="flex-1 overflow-y-auto">
+        <div class="p-4 pb-20">
       @if (libraryStore.documentsLoading()) {
       <div class="flex items-center justify-center py-12">
         <div class="text-center">
@@ -118,6 +120,8 @@ import { FolderActions } from '../../folder/store/folder.actions';
         <p class="text-sm text-error">{{ libraryStore.documentsError() }}</p>
       </div>
       }
+        </div>
+      </div>
     </div>
   `,
 })

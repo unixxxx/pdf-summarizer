@@ -122,6 +122,11 @@ export class LibraryShell {
   constructor() {
     // Check if mobile on initialization
     this.checkIfMobile();
+    
+    // Set initial sidebar state based on device type
+    if (this.isMobile()) {
+      this.uiStore.setSidebarCollapsed(true);
+    }
 
     // Auto-close sidebar on mobile when window resizes
     effect(() => {

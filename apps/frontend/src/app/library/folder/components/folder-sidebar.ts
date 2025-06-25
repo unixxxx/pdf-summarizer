@@ -4,6 +4,7 @@ import {
   ChangeDetectionStrategy,
   signal,
   effect,
+  HostListener,
 } from '@angular/core';
 
 import { RouterLink, RouterLinkActive } from '@angular/router';
@@ -58,6 +59,30 @@ import { AsyncDataItem } from '../../../core/utils/async-data-item';
             />
           </svg>
         </button>
+        } @else if (isMobile()) {
+        <!-- Close button for mobile -->
+        <div class="flex items-center justify-between mb-4">
+          <h2 class="text-lg font-semibold">Folders</h2>
+          <button
+            (click)="toggleSidebar()"
+            class="p-2 hover:bg-muted rounded-lg transition-colors sm:hidden"
+            title="Close sidebar"
+          >
+            <svg
+              class="w-5 h-5"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M6 18L18 6M6 6l12 12"
+              />
+            </svg>
+          </button>
+        </div>
         }
 
         <!-- Top Actions -->
@@ -360,10 +385,16 @@ export class FolderSidebar {
 
   // Delayed collapsed state for content switching
   protected contentCollapsed = signal(this.uiStore.sidebarCollapsed());
+  
+  // Mobile detection
+  protected isMobile = signal(false);
 
   private timeoutId: number | null = null;
 
   constructor() {
+    // Check if mobile on initialization
+    this.checkIfMobile();
+    
     // Update content collapsed state with delay
     effect(() => {
       const isCollapsed = this.uiStore.sidebarCollapsed();
@@ -384,6 +415,15 @@ export class FolderSidebar {
         this.contentCollapsed.set(false);
       }
     });
+  }
+  
+  private checkIfMobile() {
+    this.isMobile.set(window.innerWidth < 640); // sm breakpoint
+  }
+  
+  @HostListener('window:resize')
+  onResize() {
+    this.checkIfMobile();
   }
 
   // NGRX store selectors

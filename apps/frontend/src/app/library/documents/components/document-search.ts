@@ -8,6 +8,7 @@ import {
 
 import { FormsModule } from '@angular/forms';
 import { LibraryStore } from '../../library.store';
+import { UIStore } from '../../../shared/ui.store';
 
 @Component({
   selector: 'app-document-search',
@@ -18,6 +19,27 @@ import { LibraryStore } from '../../library.store';
     <div class="p-4">
       <!-- Search and Upload Row -->
       <div class="flex gap-3">
+        <!-- Folder Menu Button (Mobile Only) -->
+        <button
+          (click)="uiStore.toggleSidebar()"
+          class="sm:hidden p-2 bg-background border border-border rounded-lg hover:bg-muted transition-colors"
+          aria-label="Toggle folders"
+        >
+          <svg
+            class="w-4 h-4"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+              d="M13 5l7 7-7 7M5 5l7 7-7 7"
+            />
+          </svg>
+        </button>
+        
         <!-- Search Input -->
         <div class="relative flex-1">
           <svg
@@ -45,7 +67,7 @@ import { LibraryStore } from '../../library.store';
         <!-- Upload Button -->
         <button
           (click)="uploadClick.emit()"
-          class="px-6 py-2 bg-gradient-to-r from-primary-600 to-accent-600 text-white rounded-lg font-medium hover:shadow-lg transform hover:scale-[1.02] transition-all flex items-center gap-2"
+          class="px-4 sm:px-6 py-2 bg-gradient-to-r from-primary-600 to-accent-600 text-white rounded-lg font-medium hover:shadow-lg transform hover:scale-[1.02] transition-all flex items-center gap-2"
         >
           <svg
             class="w-5 h-5"
@@ -60,7 +82,7 @@ import { LibraryStore } from '../../library.store';
               d="M12 4v16m8-8H4"
             />
           </svg>
-          Upload
+          <span class="hidden sm:inline">Upload</span>
         </button>
       </div>
 
@@ -88,6 +110,7 @@ export class DocumentSearchComponent {
   @Output() uploadClick = new EventEmitter<void>();
 
   protected libraryStore = inject(LibraryStore);
+  protected uiStore = inject(UIStore);
 
   updateSearch(query: string) {
     this.libraryStore.setSearchQuery(query);
