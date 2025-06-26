@@ -18,6 +18,8 @@ import { FolderActions } from '../store/folder.actions';
 import { UnwrapAsyncDataPipe } from '../../../core/pipes/unwrapAsyncData';
 import { QueryAsyncStatePipe } from '../../../core/pipes/queryAsyncState';
 import { AsyncDataItem } from '../../../core/utils/async-data-item';
+import { distinctUntilChanged, Subject, throttleTime } from 'rxjs';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 
 @Component({
   selector: 'app-folder-sidebar',
@@ -425,7 +427,7 @@ export class FolderSidebar {
   // Track which folder is being hovered in collapsed mode
   protected hoveredFolderId = signal<string | null>(null);
 
-  private timeoutId: number | null = null;
+  private onDragSubject$ = new Subject<string | undefined>();
 
   constructor() {
     // Check if mobile on initialization
@@ -434,27 +436,20 @@ export class FolderSidebar {
     // Update content collapsed state with delay
     effect(() => {
       const isCollapsed = this.uiStore.sidebarCollapsed();
-
-      // Clear any pending timeout
-      if (this.timeoutId) {
-        clearTimeout(this.timeoutId);
-        this.timeoutId = null;
-      }
-
-      if (isCollapsed) {
-        // Delay content switch when collapsing - wait for full animation
-        this.timeoutId = setTimeout(() => {
-          this.contentCollapsed.set(true);
-        }, 300) as unknown as number; // Match animation duration exactly
-      } else {
-        // Switch content immediately when expanding
-        this.contentCollapsed.set(false);
-      }
+      this.contentCollapsed.set(isCollapsed);
     });
+
+    this.onDragSubject$
+      .pipe(takeUntilDestroyed(), throttleTime(300), distinctUntilChanged())
+      .subscribe((folderId) => {
+        this.store.dispatch(
+          FolderActions.setDragOverFolderCommand({ folderId })
+        );
+      });
   }
 
   private checkIfMobile() {
-    this.isMobile.set(window.innerWidth < 640); // sm breakpoint
+    this.isMobile.set(window.innerWidth < 640);
   }
 
   @HostListener('window:resize')
@@ -462,7 +457,6 @@ export class FolderSidebar {
     this.checkIfMobile();
   }
 
-  // NGRX store selectors
   asyncFolders = this.store.selectSignal<AsyncDataItem<Folder>>(
     folderFeature.selectFolder
   );
@@ -515,18 +509,11 @@ export class FolderSidebar {
 
   onDragOver(event: DragEvent, folder: FolderItem) {
     event.preventDefault();
-    this.store.dispatch(
-      FolderActions.setDragOverFolderCommand({ folderId: folder.id })
-    );
+    this.onDragSubject$.next(folder.id);
   }
 
   onDragLeave() {
-    // Use a small timeout to prevent flicker when moving between elements
-    setTimeout(() => {
-      this.store.dispatch(
-        FolderActions.setDragOverFolderCommand({ folderId: undefined })
-      );
-    }, 100);
+    this.onDragSubject$.next(undefined);
   }
 
   toggleSidebar() {
@@ -540,9 +527,6 @@ export class FolderSidebar {
   }
 
   onFolderLeave() {
-    // Add a small delay to prevent flicker when moving between parent and child
-    setTimeout(() => {
-      this.hoveredFolderId.set(null);
-    }, 100);
+    this.hoveredFolderId.set(null);
   }
 }

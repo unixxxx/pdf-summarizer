@@ -9,8 +9,6 @@ import { ModalService } from '../../../core/services/modal';
 import { UploadDialog } from '../components/upload-dialog';
 import { concatLatestFrom, mapResponse } from '@ngrx/operators';
 import { folderFeature } from '../../folder/store/folder.feature';
-import { DocumentActions } from '../../documents/store/document.actions';
-import { FolderActions } from '../../folder/store/folder.actions';
 
 @Injectable()
 export class UploadEffects {
@@ -225,35 +223,5 @@ export class UploadEffects {
         })
       ),
     { dispatch: false }
-  );
-
-  // Refresh documents and folders after successful upload
-  refreshAfterUpload$ = createEffect(() =>
-    this.actions$.pipe(
-      ofType(
-        UploadActions.uploadFileSuccessEvent,
-        UploadActions.createTextDocumentSuccessEvent
-      ),
-      concatLatestFrom(() =>
-        this.store.select(folderFeature.selectSelectedFolderId)
-      ),
-      mergeMap(([action, selectedFolderId]) => {
-        const actions = [];
-
-        // Refresh the current document list with the selected folder criteria
-        actions.push(
-          DocumentActions.fetchDocumentsCommand({
-            criteria: {
-              folder_id: selectedFolderId,
-            },
-          })
-        );
-
-        // Refresh folder tree to update counts
-        actions.push(FolderActions.fetchFoldersCommand());
-
-        return actions;
-      })
-    )
   );
 }
