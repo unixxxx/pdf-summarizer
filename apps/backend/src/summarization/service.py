@@ -11,6 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..common.exceptions import LLMError
+from ..common.pdf_utils import extract_text_from_pdf
 from ..common.retry import retry_on_llm_error
 from ..database.models import Summary
 from .llm_schemas import ComprehensiveDocumentAnalysis
@@ -137,5 +138,37 @@ Example response format:
             "version": "1.0",
             "llm_type": type(self.llm).__name__
         }
+    
+    async def process_uploaded_file(
+        self,
+        file_content: bytes,
+        filename: str,
+        content_type: str,
+    ) -> tuple[str, dict[str, Any], str]:
+        """
+        Process an uploaded file and extract text content.
+        
+        Args:
+            file_content: The raw file content
+            filename: Original filename
+            content_type: MIME type of the file
+            
+        Returns:
+            Tuple of (extracted_text, metadata, file_type)
+        """
+        # Extract text based on file type
+        if content_type == "application/pdf":
+            # Extract text from PDF
+            pdf_data = await extract_text_from_pdf(file_content)
+            text = pdf_data["text"]
+            metadata = pdf_data["metadata"]
+            file_type = 'pdf'
+        else:
+            # Plain text file
+            text = file_content.decode("utf-8")
+            metadata = {}
+            file_type = 'txt'
+        
+        return text, metadata, file_type
     
     

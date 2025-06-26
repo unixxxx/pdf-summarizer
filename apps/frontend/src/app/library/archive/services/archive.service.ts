@@ -1,22 +1,21 @@
 import { HttpClient } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { Observable, map } from 'rxjs';
+import { ArchiveStatsDto } from '../dtos/archive-stats';
+import { ArchivedDocumentDto } from '../dtos/archived-document';
+import { ArchivedFolderWithChildrenDto } from '../dtos/archived-folder-with-children';
+import { RestoreFolderRequestDto } from '../dtos/restore-folder-request';
+import { RestoreDocumentRequestDto } from '../dtos/restore-document-request';
+import { EmptyArchiveRequestDto } from '../dtos/empty-archive-request';
+import { ArchiveStats, toArchiveStats } from '../store/state/archive-stats';
 import {
-  ArchiveStatsDto,
-  ArchivedDocumentDto,
-  ArchivedFolderWithChildrenDto,
-  RestoreFolderRequestDto,
-  RestoreDocumentRequestDto,
-  EmptyArchiveRequestDto,
-} from '../dtos/archive';
-import {
-  ArchiveStats,
   ArchivedDocument,
-  ArchivedFolderWithChildren,
-  toArchiveStats,
   toArchivedDocument,
+} from '../store/state/archived-document';
+import {
+  ArchivedFolderWithChildren,
   toArchivedFolderWithChildren,
-} from '../store/state/archive';
+} from '../store/state/archived-folder-with-children';
 
 @Injectable({
   providedIn: 'root',

@@ -15,9 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..auth.dependencies import CurrentUserDep
 from ..common.exceptions import NotFoundException, SummarizationError
-from ..common.pdf_utils import extract_text_from_pdf
 from ..database.session import get_db
-from ..library.document.dependencies import DocumentServiceDep
 from ..storage.dependencies import StorageServiceDep
 from .dependencies import (
     LLMFactoryDep,
@@ -187,7 +185,6 @@ async def create_summary(
 async def upload_and_summarize(
     current_user: CurrentUserDep,
     orchestrator: SummarizationOrchestratorDep,
-    document_service: DocumentServiceDep,
     storage_service: StorageServiceDep,
     llm_factory: LLMFactoryDep,
     db: AsyncSession = Depends(get_db),
@@ -238,53 +235,6 @@ async def upload_and_summarize(
         )
     
     try:
-        # Read file content
-        content = await file.read()
-        
-        # Extract text based on file type
-        if file.content_type == "application/pdf":
-            # Extract text from PDF
-            pdf_data = await extract_text_from_pdf(content)
-            text = pdf_data["text"]
-            metadata = pdf_data["metadata"]
-        else:
-            # Plain text file
-            text = content.decode("utf-8")
-            metadata = {}
-        
-        # Store file
-        file_type = 'pdf' if file.content_type == 'application/pdf' else 'txt'
-        storage_path = await storage_service.store_file(
-            content=content,
-            user_id=str(current_user.id),
-            file_type=file_type,
-            original_filename=file.filename,
-        )
-        
-        # Create document
-        document, _ = await document_service.create_document(
-            user_id=current_user.id,
-            filename=file.filename,
-            content=content,
-            file_size=len(content),
-            storage_path=storage_path,
-            db=db,
-        )
-        
-        # Update with extracted text
-        word_count = len(text.split())
-        document = await document_service.update_document_content(
-            document_id=document.id,
-            extracted_text=text,
-            word_count=word_count,
-            db=db,
-        )
-        
-        # Update page count if available
-        if metadata.get("page_count"):
-            document.page_count = metadata["page_count"]
-            await db.flush()
-        
         # Prepare summarization options
         options = SummaryOptions(
             style=style.value,
@@ -293,11 +243,12 @@ async def upload_and_summarize(
             max_length=max_length
         )
         
-        # Create summary
-        summary = await orchestrator.summarize_document(
-            document_id=document.id,
+        # Call orchestrator to handle upload and summarization
+        summary, document = await orchestrator.upload_and_summarize(
+            file=file,
             user_id=current_user.id,
             options=options,
+            storage_service=storage_service,
             db=db,
         )
         
@@ -336,10 +287,11 @@ async def upload_and_summarize(
             llm_model=llm_info["model"],
         )
         
+    except HTTPException:
+        # Re-raise HTTP exceptions as-is
+        raise
     except Exception as e:
-        # Clean up on error
-        if 'document' in locals():
-            await db.rollback()
+        await db.rollback()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to process file: {str(e)}",

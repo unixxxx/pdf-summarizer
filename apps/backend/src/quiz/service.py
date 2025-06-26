@@ -30,6 +30,38 @@ class QuizService:
         self.llm = llm
         self.parser = PydanticOutputParser(pydantic_object=QuestionGeneration)
     
+    async def generate_quiz_from_document(
+        self,
+        document_id: UUID,
+        user_id: UUID,
+        options: QuizOptions,
+        document_service,
+        db: AsyncSession,
+    ) -> QuizResponse:
+        """Generate quiz from a document, validating access and processing status."""
+        from ...common.exceptions import BadRequestException
+        
+        # Get document and validate access
+        document = await document_service.get_document(
+            document_id=document_id,
+            user_id=user_id,
+            db=db,
+        )
+        
+        # Validate document has been processed
+        if not document.extracted_text:
+            raise BadRequestException(
+                "Document has not been processed yet. Please wait for processing to complete."
+            )
+        
+        # Generate quiz from extracted text
+        return await self.generate_quiz(
+            document_id=document_id,
+            text=document.extracted_text,
+            options=options,
+            db=db,
+        )
+    
     async def generate_quiz(
         self,
         document_id: UUID,

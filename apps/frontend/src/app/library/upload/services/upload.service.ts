@@ -2,14 +2,12 @@ import { Injectable, inject } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Observable, Subject, throwError, of } from 'rxjs';
 import { catchError, map, switchMap } from 'rxjs/operators';
-import { UploadEvent } from '../store/state/upload';
-import {
-  PresignedUrlRequestDto,
-  PresignedUrlResponseDto,
-  CreateTextDocumentRequestDto,
-  CompleteUploadRequestDto,
-  CompleteUploadResponseDto,
-} from '../dtos/upload';
+import { UploadEvent } from '../store/state/upload-event';
+import { PresignedUrlRequestDto } from '../dtos/presigned-url-request';
+import { PresignedUrlResponseDto } from '../dtos/presigned-url-response';
+import { CreateTextDocumentRequestDto } from '../dtos/create-text-document-request';
+import { CompleteUploadRequestDto } from '../dtos/complete-upload-request';
+import { CompleteUploadResponseDto } from '../dtos/complete-upload-response';
 
 @Injectable({
   providedIn: 'root',
@@ -67,8 +65,10 @@ export class UploadService {
           let uploadCompleted = false;
 
           // Get presigned POST URL
-          const contentType = file.type || (file.name.endsWith('.txt') ? 'text/plain' : 'application/pdf');
-          
+          const contentType =
+            file.type ||
+            (file.name.endsWith('.txt') ? 'text/plain' : 'application/pdf');
+
           this.getPresignedUrl({
             filename: file.name,
             file_size: file.size,
@@ -126,7 +126,7 @@ export class UploadService {
               }),
               catchError((error) => {
                 let errorMessage = 'Upload failed';
-                
+
                 // Check various error response formats
                 if (error.error?.detail) {
                   // Standard API error response format
@@ -144,18 +144,21 @@ export class UploadService {
                   // Plain string
                   errorMessage = error;
                 }
-                
+
                 // Clean up error message if it contains HTTP status prefix
                 const match = errorMessage.match(/^\d+:\s*(.+)$/);
                 if (match) {
                   errorMessage = match[1];
                 }
-                
+
                 // Remove "Failed to generate upload URL:" prefix if present
                 if (errorMessage.startsWith('Failed to generate upload URL:')) {
-                  errorMessage = errorMessage.replace(/^Failed to generate upload URL:\s*\d*:\s*/, '');
+                  errorMessage = errorMessage.replace(
+                    /^Failed to generate upload URL:\s*\d*:\s*/,
+                    ''
+                  );
                 }
-                
+
                 const errorEvent: UploadEvent = {
                   type: 'error',
                   fileId,
@@ -197,14 +200,14 @@ export class UploadService {
     // Keep the original title with .txt extension for the filename
     // The backend will handle any necessary sanitization for storage
     const filename = `${document.title}.txt`;
-    
+
     // Convert text content to a File object
     const blob = new Blob([document.content], { type: 'text/plain' });
-    const file = new File([blob], filename, { 
+    const file = new File([blob], filename, {
       type: 'text/plain',
-      lastModified: Date.now()
+      lastModified: Date.now(),
     });
-    
+
     // Use the same upload flow as regular files
     return this.uploadFile(file, document.folder_id);
   }

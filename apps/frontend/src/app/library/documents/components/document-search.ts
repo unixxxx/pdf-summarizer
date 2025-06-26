@@ -2,12 +2,11 @@ import {
   Component,
   inject,
   ChangeDetectionStrategy,
-  Output,
-  EventEmitter,
+  signal,
+  output,
 } from '@angular/core';
 
 import { FormsModule } from '@angular/forms';
-import { LibraryStore } from '../../library.store';
 import { UIStore } from '../../../shared/ui.store';
 
 @Component({
@@ -39,7 +38,7 @@ import { UIStore } from '../../../shared/ui.store';
             />
           </svg>
         </button>
-        
+
         <!-- Search Input -->
         <div class="relative flex-1">
           <svg
@@ -57,7 +56,7 @@ import { UIStore } from '../../../shared/ui.store';
           </svg>
           <input
             type="text"
-            [ngModel]="libraryStore.searchQuery()"
+            [ngModel]="searchQuery()"
             (ngModelChange)="updateSearch($event)"
             placeholder="Search documents..."
             class="w-full pl-10 pr-4 py-2 bg-background border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
@@ -87,12 +86,12 @@ import { UIStore } from '../../../shared/ui.store';
       </div>
 
       <!-- Active Filters Summary -->
-      @if (libraryStore.documentsIsSearching()) {
+      @if (isSearching()) {
       <div class="mt-3 flex items-center gap-2">
         <span class="text-sm text-muted-foreground">Active filters:</span>
-        @if (libraryStore.searchQuery()) {
+        @if (searchQuery()) {
         <span class="px-2 py-1 text-xs bg-muted rounded-full">
-          Search: "{{ libraryStore.searchQuery() }}"
+          Search: "{{ searchQuery() }}"
         </span>
         }
         <button
@@ -106,19 +105,25 @@ import { UIStore } from '../../../shared/ui.store';
     </div>
   `,
 })
-export class DocumentSearchComponent {
-  @Output() uploadClick = new EventEmitter<void>();
+export class DocumentSearch {
+  uploadClick = output<void>();
+  searchChange = output<string>();
 
-  protected libraryStore = inject(LibraryStore);
   protected uiStore = inject(UIStore);
 
+  // Local state
+  protected searchQuery = signal('');
+  protected isSearching = signal(false);
+
   updateSearch(query: string) {
-    this.libraryStore.setSearchQuery(query);
-    this.libraryStore.loadDocuments();
+    this.searchQuery.set(query);
+    this.isSearching.set(query.length > 0);
+    this.searchChange.emit(query);
   }
 
   clearFilters() {
-    this.libraryStore.clearFilters();
-    this.libraryStore.loadDocuments();
+    this.searchQuery.set('');
+    this.isSearching.set(false);
+    this.searchChange.emit('');
   }
 }

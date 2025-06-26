@@ -1,12 +1,10 @@
 import { HttpClient } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
-import {
-  FolderCreateDto,
-  FolderDto,
-  FolderItemDto,
-  FolderUpdateDto,
-} from '../dtos/folder';
+import { FolderTreeDto } from '../dtos/folder-tree';
+import { FolderItemDto } from '../dtos/folder-item';
+import { FolderCreateDto } from '../dtos/folder-create';
+import { FolderUpdateDto } from '../dtos/folder-update';
 
 @Injectable({
   providedIn: 'root',
@@ -19,8 +17,8 @@ export class FolderService {
     return this.http.post<FolderItemDto>(this.apiUrl, folder);
   }
 
-  getFoldersTree(): Observable<FolderDto> {
-    return this.http.get<FolderDto>(`${this.apiUrl}/tree`);
+  getFoldersTree(): Observable<FolderTreeDto> {
+    return this.http.get<FolderTreeDto>(`${this.apiUrl}/tree`);
   }
 
   getFolder(folderId: string): Observable<FolderItemDto> {
@@ -36,5 +34,15 @@ export class FolderService {
 
   deleteFolder(folderId: string): Observable<void> {
     return this.http.delete<void>(`${this.apiUrl}/${folderId}`);
+  }
+
+  addDocumentsToFolder(
+    folderId: string,
+    documentIds: string[]
+  ): Observable<FolderItemDto> {
+    return this.http.post<FolderItemDto>(
+      `${this.apiUrl}/${folderId}/documents`,
+      { document_ids: documentIds }
+    );
   }
 }

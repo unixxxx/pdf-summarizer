@@ -6,7 +6,7 @@ import {
   computed,
 } from '@angular/core';
 
-import { Tag } from '../store/state/tag';
+import { Tag as TagModel } from '../store/state/tag';
 
 @Component({
   selector: 'app-tag',
@@ -30,15 +30,15 @@ import { Tag } from '../store/state/tag';
     </span>
   `,
 })
-export class TagComponent {
+export class Tag {
   // Input signals
-  tag = input.required<Tag>();
+  tag = input.required<TagModel>();
   variant = input<'default' | 'filter' | 'small'>('default');
   selected = input(false);
   clickable = input(false);
 
   // Output signals
-  tagClick = output<Tag>();
+  tagClick = output<TagModel>();
 
   // Computed properties
   backgroundColor = computed(() => {

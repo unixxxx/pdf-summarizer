@@ -6,8 +6,8 @@ import {
   computed,
 } from '@angular/core';
 
-import { TagComponent } from './tag';
-import { Tag } from '../store/state/tag';
+import { Tag as TagComponent } from './tag';
+import { Tag as TagModel } from '../store/state/tag';
 
 @Component({
   selector: 'app-tag-list',
@@ -28,15 +28,15 @@ import { Tag } from '../store/state/tag';
     </div>
   `,
 })
-export class TagListComponent {
+export class TagList {
   // Input signals
-  tags = input<Tag[]>([]);
+  tags = input<TagModel[]>([]);
   variant = input<'default' | 'filter' | 'small'>('default');
   clickable = input(false);
   gapSize = input<'small' | 'medium' | 'large'>('medium');
 
   // Output signals
-  tagClick = output<Tag>();
+  tagClick = output<TagModel>();
 
   // Computed properties
   gapClass = computed(() => {
@@ -48,7 +48,7 @@ export class TagListComponent {
     return gapClasses[this.gapSize()];
   });
 
-  onTagClick(tag: Tag) {
+  onTagClick(tag: TagModel) {
     this.tagClick.emit(tag);
   }
 }

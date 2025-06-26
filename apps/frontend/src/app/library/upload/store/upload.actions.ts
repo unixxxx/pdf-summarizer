@@ -1,5 +1,6 @@
 import { createActionGroup, emptyProps, props } from '@ngrx/store';
-import { UploadResult, UploadProgress } from './state/upload';
+import { UploadResult } from './state/upload-result';
+import { UploadProgress } from './state/upload-progress';
 
 export const UploadActions = createActionGroup({
   source: 'Upload',
@@ -8,7 +9,10 @@ export const UploadActions = createActionGroup({
     'Upload file command': props<{ file: File }>(),
     'Upload file started event': props<{ fileId: string; fileName: string }>(),
     'Upload file progress event': props<{ progress: UploadProgress }>(),
-    'Upload file success event': props<{ result: UploadResult }>(),
+    'Upload file success event': props<{
+      result: UploadResult;
+      folderId: string | null;
+    }>(),
     'Upload file failure event': props<{ error: string; fileName: string }>(),
 
     // Text document operations
@@ -17,7 +21,10 @@ export const UploadActions = createActionGroup({
       content: string;
     }>(),
     'Create text document started event': props<{ fileName: string }>(),
-    'Create text document success event': props<{ result: UploadResult }>(),
+    'Create text document success event': props<{
+      result: UploadResult;
+      folderId: string | null;
+    }>(),
     'Create text document failure event': props<{
       error: string;
       fileName: string;
@@ -25,7 +32,7 @@ export const UploadActions = createActionGroup({
 
     // UI state operations
     'Reset upload state command': emptyProps(),
-    
+
     // Upload dialog operations
     'Open upload dialog command': emptyProps(),
   },

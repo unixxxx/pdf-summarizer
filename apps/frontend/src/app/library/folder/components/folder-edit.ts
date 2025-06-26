@@ -7,9 +7,9 @@ import {
   Validators,
 } from '@angular/forms';
 import { ModalRef, MODAL_REF } from '../../../core/services/modal';
-import { FolderItem } from '../store/state/folder';
+import { FolderItem } from '../store/state/folder-item';
 import { Tag } from '../../tag/store/state/tag';
-import { FolderUpdateDto } from '../dtos/folder';
+import { FolderUpdateDto } from '../dtos/folder-update';
 import { ToFormControls } from '../../../core/utils/transform';
 import { FormatDatePipe } from '../../../core/pipes/formatDate';
 import { availableColors } from '../../../core/utils/colors';
@@ -241,60 +241,14 @@ export class FolderEdit implements OnInit {
 
   availableColors = availableColors;
 
-  // Get valid parent folders (exclude self and descendants)
+  // Get valid parent folders (only root level folders to limit nesting to one level)
   get validParentFolders(): FolderItem[] {
     const currentFolder = this.folder();
     const allFolders = this.folders();
 
-    // Get all descendant IDs
-    const descendantIds = new Set<string>();
-    const collectDescendants = (folder: FolderItem) => {
-      descendantIds.add(folder.id);
-      if (folder.children) {
-        folder.children.forEach((child) => collectDescendants(child));
-      }
-    };
-
-    // Find the current folder in the tree to get its descendants
-    const findAndCollect = (folders: FolderItem[]) => {
-      for (const folder of folders) {
-        if (folder.id === currentFolder.id) {
-          collectDescendants(folder);
-          return;
-        }
-        if (folder.children) {
-          findAndCollect(folder.children);
-        }
-      }
-    };
-
-    // Start from the original folder structure
-    findAndCollect(allFolders);
-
-    // Flatten all folders for the dropdown - keep original folder objects with formatted names
-    const flattenFolders = (folders: FolderItem[], level = 0): FolderItem[] => {
-      const result: FolderItem[] = [];
-      for (const folder of folders) {
-        // Only include if not a descendant
-        if (!descendantIds.has(folder.id)) {
-          const prefix = level > 0 ? '\u00A0\u00A0'.repeat(level) + '└─ ' : '';
-          // Create a new object but preserve the original ID and other properties
-          result.push({
-            ...folder,
-            // Add prefix to the name for display in dropdown
-            name: prefix + folder.name,
-            // Ensure we keep the original ID for proper selection
-            id: folder.id,
-          });
-        }
-        if (folder.children && folder.children.length > 0) {
-          result.push(...flattenFolders(folder.children, level + 1));
-        }
-      }
-      return result;
-    };
-
-    return flattenFolders(allFolders);
+    // Only allow root level folders as parents (to limit nesting to one level)
+    // and exclude the current folder itself
+    return allFolders.filter((folder) => folder.id !== currentFolder.id);
   }
 
   ngOnInit() {

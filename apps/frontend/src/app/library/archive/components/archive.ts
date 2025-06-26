@@ -15,10 +15,8 @@ import {
 } from '@angular/animations';
 import { ArchiveActions } from '../store/archive.actions';
 import { archiveFeature } from '../store/archive.feature';
-import {
-  ArchivedDocument,
-  ArchivedFolderWithChildren,
-} from '../store/state/archive';
+import { ArchivedDocument } from '../store/state/archived-document';
+import { ArchivedFolderWithChildren } from '../store/state/archived-folder-with-children';
 import { FormatDatePipe } from '../../../core/pipes/formatDate';
 import { FormatFileSizePipe } from '../../../core/pipes/formatFileSize';
 
@@ -512,7 +510,7 @@ import { FormatFileSizePipe } from '../../../core/pipes/formatFileSize';
     </div>
   `,
 })
-export class ArchiveComponent {
+export class Archive {
   protected readonly store = inject(Store);
 
   // Store signals

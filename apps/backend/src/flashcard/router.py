@@ -9,7 +9,7 @@ from ..auth.dependencies import CurrentUserDep
 from ..common.dependencies import LLMFactoryDep
 from ..common.exceptions import NotFoundException
 from ..database.session import get_db
-from ..library.document.dependencies import DocumentServiceDep
+from ..document.dependencies import DocumentServiceDep
 from .schemas import (
     FlashcardOptions,
     FlashcardProgress,
@@ -45,31 +45,16 @@ async def generate_flashcards(
 ) -> FlashcardSetResponse:
     """Generate flashcards from a document."""
     try:
-        # Get document and validate access
-        document = await document_service.get_document(
-            document_id=document_id,
-            user_id=current_user.id,
-            db=db,
-        )
-        
-        # Extract text from document
-        if not document.extracted_text:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Document has not been processed yet. Please wait for processing to complete.",
-            )
-        
-        text = document.extracted_text
-        
         # Create flashcard service
         llm = llm_factory.create_chat_model()
         flashcard_service = FlashcardService(llm)
         
-        # Generate flashcards
-        flashcard_set = await flashcard_service.generate_flashcards(
+        # Generate flashcards (document validation handled in service)
+        flashcard_set = await flashcard_service.generate_flashcards_from_document(
             document_id=document_id,
-            text=text,
+            user_id=current_user.id,
             options=options,
+            document_service=document_service,
             db=db,
         )
         
@@ -81,6 +66,12 @@ async def generate_flashcards(
             detail="Document not found",
         )
     except Exception as e:
+        from ..common.exceptions import BadRequestException
+        if isinstance(e, BadRequestException):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=e.detail,
+            )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to generate flashcards: {str(e)}",

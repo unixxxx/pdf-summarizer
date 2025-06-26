@@ -9,7 +9,7 @@ from ..auth.dependencies import CurrentUserDep
 from ..common.dependencies import LLMFactoryDep
 from ..common.exceptions import NotFoundException
 from ..database.session import get_db
-from ..library.document.dependencies import DocumentServiceDep
+from ..document.dependencies import DocumentServiceDep
 from .schemas import QuizOptions, QuizResponse, QuizResult, QuizSubmission
 from .service import QuizService
 
@@ -40,31 +40,16 @@ async def generate_quiz(
 ) -> QuizResponse:
     """Generate quiz questions from a document."""
     try:
-        # Get document and validate access
-        document = await document_service.get_document(
-            document_id=document_id,
-            user_id=current_user.id,
-            db=db,
-        )
-        
-        # Extract text from document
-        if not document.extracted_text:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Document has not been processed yet. Please wait for processing to complete.",
-            )
-        
-        text = document.extracted_text
-        
         # Create quiz service
         llm = llm_factory.create_chat_model()
         quiz_service = QuizService(llm)
         
-        # Generate quiz
-        quiz = await quiz_service.generate_quiz(
+        # Generate quiz (document validation handled in service)
+        quiz = await quiz_service.generate_quiz_from_document(
             document_id=document_id,
-            text=text,
+            user_id=current_user.id,
             options=options,
+            document_service=document_service,
             db=db,
         )
         
@@ -76,6 +61,12 @@ async def generate_quiz(
             detail="Document not found",
         )
     except Exception as e:
+        from ..common.exceptions import BadRequestException
+        if isinstance(e, BadRequestException):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=e.detail,
+            )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to generate quiz: {str(e)}",

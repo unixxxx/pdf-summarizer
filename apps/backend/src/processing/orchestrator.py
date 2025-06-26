@@ -10,7 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..database.models import Document
-from ..library.document.service import DocumentService
+from ..document.service import DocumentService
 from ..storage.service import StorageService
 
 logger = logging.getLogger(__name__)

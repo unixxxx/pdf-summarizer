@@ -6,10 +6,16 @@ from uuid import UUID, uuid4
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..common.exceptions import BadRequestException, StorageError, ValidationError
+from ..common.exceptions import (
+    BadRequestException,
+    NotFoundException,
+    StorageError,
+    ValidationError,
+)
 from ..config import Settings
-from ..library.document.service import DocumentService
-from ..library.folder.service import FolderService
+from ..document.service import DocumentService
+from ..folder.service import FolderService
+from ..processing.orchestrator import DocumentProcessingOrchestrator
 from ..storage.service import StorageService
 from .schemas import (
     CompleteUploadRequest,
@@ -194,3 +200,74 @@ class UploadService:
             fields=presigned_post["fields"],
             expires_at=datetime.now(timezone.utc) + timedelta(hours=1),
         )
+
+    async def trigger_document_processing(
+        self,
+        document_id: UUID,
+        user_id: UUID,
+        orchestrator: DocumentProcessingOrchestrator,
+        db: AsyncSession,
+    ) -> dict:
+        """Trigger document processing for an uploaded document."""
+        try:
+            # Get document to verify ownership
+            document = await self.document_service.get_document(
+                document_id=document_id,
+                user_id=user_id,
+                db=db,
+            )
+            
+            # Check if document needs processing
+            if document.status == "completed":
+                return {
+                    "document_id": str(document_id),
+                    "status": "already_processed",
+                    "message": "Document has already been processed"
+                }
+            
+            # Update status to processing
+            await self.document_service.update_document_status(
+                document_id=document_id,
+                status="processing",
+                db=db,
+            )
+            
+            # Get file content from storage
+            file_content = await self.storage_service.get_file(document.storage_path)
+            
+            # Process document
+            await orchestrator.process_uploaded_document(
+                document_id=document_id,
+                file_content=file_content,
+                user_id=user_id,
+                db=db,
+            )
+            
+            # Update status to completed
+            await self.document_service.update_document_status(
+                document_id=document_id,
+                status="completed",
+                db=db,
+            )
+            
+            await db.commit()
+            
+            return {
+                "document_id": str(document_id),
+                "status": "processing_started",
+                "message": "Document processing has been triggered"
+            }
+            
+        except NotFoundException:
+            raise NotFoundException("Document not found or access denied")
+        except Exception as e:
+            # Update status to failed
+            await self.document_service.update_document_status(
+                document_id=document_id,
+                status="failed",
+                db=db,
+            )
+            await db.commit()
+            
+            logger.error(f"Failed to process document {document_id}: {str(e)}")
+            raise

@@ -1,9 +1,7 @@
 import { createActionGroup, emptyProps, props } from '@ngrx/store';
-import {
-  ArchivedDocument,
-  ArchivedFolderWithChildren,
-  ArchiveStats,
-} from './state/archive';
+import { ArchiveStats } from './state/archive-stats';
+import { ArchivedDocument } from './state/archived-document';
+import { ArchivedFolderWithChildren } from './state/archived-folder-with-children';
 
 export const ArchiveActions = createActionGroup({
   source: 'Archive',
@@ -18,32 +16,28 @@ export const ArchiveActions = createActionGroup({
     'Fetch archive failure event': props<{ error: string }>(),
 
     // Restore operations
-    'Restore folder command': props<{
-      folderId: string;
-      restoreChildren: boolean;
-      newParentId: string | null;
-    }>(),
+    'Restore folder command': props<{ folderId: string }>(),
     'Restore folder success event': props<{ folderId: string }>(),
     'Restore folder failure event': props<{ error: string }>(),
 
     'Restore document command': props<{
-      documentIds: string[];
+      documentId: string;
       folderId: string | null;
     }>(),
-    'Restore document success event': props<{ documentIds: string[] }>(),
+    'Restore document success event': props<{
+      documentId: string;
+      folderId: string | null;
+    }>(),
     'Restore document failure event': props<{ error: string }>(),
 
     // Delete operations
-    'Delete folder permanently command': props<{
-      folderId: string;
-      deleteChildren: boolean;
-    }>(),
+    'Delete folder permanently command': props<{ folderId: string }>(),
     'Delete folder permanently success event': props<{ folderId: string }>(),
     'Delete folder permanently failure event': props<{ error: string }>(),
 
-    'Delete document permanently command': props<{ documentIds: string[] }>(),
+    'Delete document permanently command': props<{ documentId: string }>(),
     'Delete document permanently success event': props<{
-      documentIds: string[];
+      documentId: string;
     }>(),
     'Delete document permanently failure event': props<{ error: string }>(),
 

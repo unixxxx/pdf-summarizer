@@ -11,11 +11,14 @@ import { ModalService } from '../../../core/services/modal';
 import { FolderCreate } from '../components/folder-create';
 import { FolderEdit } from '../components/folder-edit';
 import { ConfirmDialog } from '../../../shared/components/confirm-dialog/confirm-dialog';
-import { FolderCreateDto, FolderUpdateDto } from '../dtos/folder';
+import { FolderCreateDto } from '../dtos/folder-create';
+import { FolderUpdateDto } from '../dtos/folder-update';
 import { folderFeature } from './folder.feature';
 import { unwrapAsyncDataItem } from '../../../core/utils/async-data-item';
-import { FolderItem } from './state/folder';
+import { FolderItem } from './state/folder-item';
 import { tagFeature } from '../../tag/store/tag.feature';
+import { documentFeature } from '../../documents/store/document.feature';
+import { ArchiveActions } from '../../archive/store/archive.actions';
 
 @Injectable()
 export class FolderEffects {
@@ -101,7 +104,7 @@ export class FolderEffects {
           mapResponse({
             next: () => {
               this.uiStore.showNotification(
-                'Folder deleted successfully',
+                'Folder moved to archive',
                 'success'
               );
               return FolderActions.deleteFolderSuccessEvent({ id });
@@ -244,20 +247,20 @@ export class FolderEffects {
         }
 
         const message = hasContents
-          ? `Are you sure you want to delete the folder "${
+          ? `Are you sure you want to move the folder "${
               folder.name
-            }"? It contains ${contentsList.join(
+            }" to the archive? It contains ${contentsList.join(
               ' and '
-            )}. All contents will be permanently deleted.`
-          : `Are you sure you want to delete the folder "${folder.name}"? This action cannot be undone.`;
+            )}. All contents will be moved to the archive and can be restored later.`
+          : `Are you sure you want to move the folder "${folder.name}" to the archive? You can restore it later if needed.`;
 
         return from(
           this.modalService.create<boolean>({
             component: ConfirmDialog,
             inputs: {
-              title: 'Delete Folder',
+              title: 'Move Folder to Archive',
               message,
-              confirmText: 'Delete Folder',
+              confirmText: 'Move to Archive',
               cancelText: 'Cancel',
             },
             cssClass: 'delete-modal',
@@ -278,6 +281,49 @@ export class FolderEffects {
           )
         );
       })
+    )
+  );
+
+  // Handle adding documents to folder
+  addDocumentsToFolder$ = createEffect(() =>
+    this.actions$.pipe(
+      ofType(FolderActions.addDocumentsToFolderCommand),
+      switchMap(({ from, to, documentId }) => {
+        return this.folderService.addDocumentsToFolder(to, [documentId]).pipe(
+          mapResponse({
+            next: () => {
+              this.uiStore.showSuccess('Document moved to folder');
+              return FolderActions.addDocumentsToFolderSuccessEvent({
+                from,
+                to,
+                documentId,
+              });
+            },
+            error: (error: Error) => {
+              this.uiStore.showError('Failed to move document to folder');
+              return FolderActions.addDocumentsToFolderFailureEvent({
+                error: error.message || 'Failed to move document',
+              });
+            },
+          })
+        );
+      })
+    )
+  );
+
+  // Refresh folders after folder restoration from archive
+  refreshAfterFolderRestore$ = createEffect(() =>
+    this.actions$.pipe(
+      ofType(ArchiveActions.restoreFolderSuccessEvent),
+      map(() => FolderActions.fetchFoldersCommand())
+    )
+  );
+
+  // Refresh folders after document restoration from archive (in case it affects counts)
+  refreshAfterDocumentRestore$ = createEffect(() =>
+    this.actions$.pipe(
+      ofType(ArchiveActions.restoreDocumentSuccessEvent),
+      map(() => FolderActions.fetchFoldersCommand())
     )
   );
 }

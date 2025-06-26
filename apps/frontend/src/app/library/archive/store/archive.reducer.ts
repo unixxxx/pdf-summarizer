@@ -78,14 +78,14 @@ export const archiveReducer = createReducer<ArchiveState>(
   on(ArchiveActions.restoreFolderFailureEvent, (state) => state),
 
   on(ArchiveActions.restoreDocumentCommand, (state) => state),
-  on(ArchiveActions.restoreDocumentSuccessEvent, (state, { documentIds }) => {
+  on(ArchiveActions.restoreDocumentSuccessEvent, (state, { documentId }) => {
     const currentData = state.archive.data;
     const updatedDocuments = currentData.documents.filter(
-      (doc) => !documentIds.includes(doc.id)
+      (doc) => doc.id !== documentId
     );
     const updatedStats = {
       ...currentData.stats,
-      totalDocuments: currentData.stats.totalDocuments - documentIds.length,
+      totalDocuments: currentData.stats.totalDocuments - 1,
     };
 
     return {
@@ -155,14 +155,14 @@ export const archiveReducer = createReducer<ArchiveState>(
   on(ArchiveActions.deleteDocumentPermanentlyCommand, (state) => state),
   on(
     ArchiveActions.deleteDocumentPermanentlySuccessEvent,
-    (state, { documentIds }) => {
+    (state, { documentId }) => {
       const currentData = state.archive.data;
       const updatedDocuments = currentData.documents.filter(
-        (doc) => !documentIds.includes(doc.id)
+        (doc) => doc.id !== documentId
       );
       const updatedStats = {
         ...currentData.stats,
-        totalDocuments: currentData.stats.totalDocuments - documentIds.length,
+        totalDocuments: currentData.stats.totalDocuments - 1,
       };
 
       return {

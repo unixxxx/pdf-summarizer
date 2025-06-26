@@ -16,14 +16,14 @@ import {
 } from '@angular/animations';
 import { RouterOutlet } from '@angular/router';
 import { FolderSidebar } from './folder/components/folder-sidebar';
-import { DocumentDeleteDialogComponent } from './documents/components/document-delete-dialog';
 import { UIStore } from '../shared/ui.store';
-import { LibraryStore } from './library.store';
+import { Store } from '@ngrx/store';
+import { documentFeature } from './documents/store/document.feature';
 
 @Component({
   selector: 'app-library-shell',
   standalone: true,
-  imports: [RouterOutlet, FolderSidebar, DocumentDeleteDialogComponent],
+  imports: [RouterOutlet, FolderSidebar],
   changeDetection: ChangeDetectionStrategy.OnPush,
   animations: [
     trigger('sidebarAnimation', [
@@ -107,55 +107,20 @@ import { LibraryStore } from './library.store';
         </div>
       </div>
     </div>
-
-    <!-- Dialogs -->
-    <app-document-delete-dialog />
   `,
 })
 export class LibraryShell {
   protected uiStore = inject(UIStore);
-  protected libraryStore = inject(LibraryStore);
   protected isMobile = signal(false);
-
-  private previousProcessingIds = new Set<string>();
 
   constructor() {
     // Check if mobile on initialization
     this.checkIfMobile();
-    
+
     // Set initial sidebar state based on device type
     if (this.isMobile()) {
       this.uiStore.setSidebarCollapsed(true);
     }
-
-    // Auto-close sidebar on mobile when window resizes
-    effect(() => {
-      if (this.isMobile() && !this.uiStore.sidebarCollapsed()) {
-        // Don't close on initial load, only on resize
-      }
-    });
-
-    // Watch for processing completion
-    effect(() => {
-      const currentProcessingIds = new Set(
-        this.libraryStore.processingDocumentIds()
-      );
-
-      // Check if any documents that were processing are no longer processing
-      for (const id of this.previousProcessingIds) {
-        if (!currentProcessingIds.has(id)) {
-          // Document finished processing, refresh the list with a delay
-          // to ensure backend has committed the status change
-          setTimeout(() => {
-            this.libraryStore.loadDocuments();
-          }, 1000); // 1 second delay to ensure DB commit is complete
-          break; // Only refresh once even if multiple documents finished
-        }
-      }
-
-      // Update the previous set for next comparison
-      this.previousProcessingIds = currentProcessingIds;
-    });
   }
 
   toggleSidebar() {
@@ -182,12 +147,5 @@ export class LibraryShell {
 
   private checkIfMobile() {
     this.isMobile.set(window.innerWidth < 640); // sm breakpoint
-  }
-
-  onDocumentUploaded() {
-    // Refresh the document list with a small delay to ensure backend has updated status
-    setTimeout(() => {
-      this.libraryStore.loadDocuments();
-    }, 500);
   }
 }

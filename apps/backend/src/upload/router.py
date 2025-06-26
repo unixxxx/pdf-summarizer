@@ -149,57 +149,16 @@ async def trigger_document_processing(
     db: AsyncSession = Depends(get_db),
 ) -> dict:
     """Trigger document processing for an uploaded document."""
-    from ..library.document.service import DocumentService
-    
     try:
-        # Get document to verify ownership
-        document_service = DocumentService()
-        document = await document_service.get_document(
+        settings = get_settings()
+        upload_service = UploadService(storage_service, settings)
+        
+        return await upload_service.trigger_document_processing(
             document_id=document_id,
             user_id=current_user.id,
+            orchestrator=orchestrator,
             db=db,
         )
-        
-        # Check if document needs processing
-        if document.status == "completed":
-            return {
-                "document_id": str(document_id),
-                "status": "already_processed",
-                "message": "Document has already been processed"
-            }
-        
-        # Update status to processing
-        await document_service.update_document_status(
-            document_id=document_id,
-            status="processing",
-            db=db,
-        )
-        
-        # Get file content from storage
-        file_content = await storage_service.get_file(document.storage_path)
-        
-        # Process document
-        await orchestrator.process_uploaded_document(
-            document_id=document_id,
-            file_content=file_content,
-            user_id=current_user.id,
-            db=db,
-        )
-        
-        # Update status to completed
-        await document_service.update_document_status(
-            document_id=document_id,
-            status="completed",
-            db=db,
-        )
-        
-        await db.commit()
-        
-        return {
-            "document_id": str(document_id),
-            "status": "processing_started",
-            "message": "Document processing has been triggered"
-        }
         
     except NotFoundException:
         raise HTTPException(
@@ -207,14 +166,6 @@ async def trigger_document_processing(
             detail="Document not found or access denied",
         )
     except Exception as e:
-        # Update status to failed
-        await document_service.update_document_status(
-            document_id=document_id,
-            status="failed",
-            db=db,
-        )
-        await db.commit()
-        
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to process document: {str(e)}",

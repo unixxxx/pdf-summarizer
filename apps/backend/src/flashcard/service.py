@@ -30,6 +30,38 @@ class FlashcardService:
         self.llm = llm
         self.parser = PydanticOutputParser(pydantic_object=FlashcardGeneration)
     
+    async def generate_flashcards_from_document(
+        self,
+        document_id: UUID,
+        user_id: UUID,
+        options: FlashcardOptions,
+        document_service,
+        db: AsyncSession,
+    ) -> FlashcardSetResponse:
+        """Generate flashcards from a document, validating access and processing status."""
+        from ...common.exceptions import BadRequestException
+        
+        # Get document and validate access
+        document = await document_service.get_document(
+            document_id=document_id,
+            user_id=user_id,
+            db=db,
+        )
+        
+        # Validate document has been processed
+        if not document.extracted_text:
+            raise BadRequestException(
+                "Document has not been processed yet. Please wait for processing to complete."
+            )
+        
+        # Generate flashcards from extracted text
+        return await self.generate_flashcards(
+            document_id=document_id,
+            text=document.extracted_text,
+            options=options,
+            db=db,
+        )
+    
     async def generate_flashcards(
         self,
         document_id: UUID,

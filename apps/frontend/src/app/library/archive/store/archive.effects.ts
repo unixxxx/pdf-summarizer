@@ -49,12 +49,12 @@ export class ArchiveEffects {
   restoreFolder$ = createEffect(() =>
     this.actions$.pipe(
       ofType(ArchiveActions.restoreFolderCommand),
-      switchMap(({ folderId, restoreChildren, newParentId }) =>
+      switchMap(({ folderId }) =>
         this.archiveService
           .restoreFolder({
             folder_id: folderId,
-            restore_children: restoreChildren,
-            new_parent_id: newParentId,
+            restore_children: true, // Always restore children
+            new_parent_id: null, // Restore to original parent
           })
           .pipe(
             mapResponse({
@@ -75,10 +75,10 @@ export class ArchiveEffects {
   restoreDocument$ = createEffect(() =>
     this.actions$.pipe(
       ofType(ArchiveActions.restoreDocumentCommand),
-      switchMap(({ documentIds, folderId }) =>
+      switchMap(({ documentId, folderId }) =>
         this.archiveService
           .restoreDocuments({
-            document_ids: documentIds,
+            document_ids: [documentId],
             folder_id: folderId,
           })
           .pipe(
@@ -86,7 +86,8 @@ export class ArchiveEffects {
               next: () => {
                 this.uiStore.showSuccess('Document restored successfully');
                 return ArchiveActions.restoreDocumentSuccessEvent({
-                  documentIds,
+                  documentId,
+                  folderId,
                 });
               },
               error: (error: Error) =>
@@ -102,11 +103,11 @@ export class ArchiveEffects {
   deleteFolderPermanently$ = createEffect(() =>
     this.actions$.pipe(
       ofType(ArchiveActions.deleteFolderPermanentlyCommand),
-      switchMap(({ folderId, deleteChildren }) =>
+      switchMap(({ folderId }) =>
         this.archiveService
           .deleteFolder({
             folder_id: folderId,
-            delete_children: deleteChildren,
+            delete_children: true, // Always delete children
           })
           .pipe(
             mapResponse({
@@ -129,17 +130,17 @@ export class ArchiveEffects {
   deleteDocumentPermanently$ = createEffect(() =>
     this.actions$.pipe(
       ofType(ArchiveActions.deleteDocumentPermanentlyCommand),
-      switchMap(({ documentIds }) =>
+      switchMap(({ documentId }) =>
         this.archiveService
           .deleteDocuments({
-            document_ids: documentIds,
+            document_ids: [documentId],
           })
           .pipe(
             mapResponse({
               next: () => {
                 this.uiStore.showSuccess('Document permanently deleted');
                 return ArchiveActions.deleteDocumentPermanentlySuccessEvent({
-                  documentIds,
+                  documentId,
                 });
               },
               error: (error: Error) =>
@@ -195,11 +196,7 @@ export class ArchiveEffects {
 
         const result = await modalRef.onDidDismiss();
         if (result.data) {
-          return ArchiveActions.restoreFolderCommand({
-            folderId: folder.id,
-            restoreChildren: true,
-            newParentId: null,
-          });
+          return ArchiveActions.restoreFolderCommand({ folderId: folder.id });
         }
         return { type: 'NO_ACTION' };
       })
@@ -224,8 +221,8 @@ export class ArchiveEffects {
         const result = await modalRef.onDidDismiss();
         if (result.data) {
           return ArchiveActions.restoreDocumentCommand({
-            documentIds: [document.id],
-            folderId: null,
+            documentId: document.id,
+            folderId: document.folderId || null,
           });
         }
         return { type: 'NO_ACTION' };
@@ -251,7 +248,6 @@ export class ArchiveEffects {
         if (result.data) {
           return ArchiveActions.deleteFolderPermanentlyCommand({
             folderId: folder.id,
-            deleteChildren: true,
           });
         }
         return { type: 'NO_ACTION' };
@@ -276,7 +272,7 @@ export class ArchiveEffects {
         const result = await modalRef.onDidDismiss();
         if (result.data) {
           return ArchiveActions.deleteDocumentPermanentlyCommand({
-            documentIds: [document.id],
+            documentId: document.id,
           });
         }
         return { type: 'NO_ACTION' };

@@ -10,7 +10,8 @@ import {
 import { RouterLink, RouterLinkActive } from '@angular/router';
 import { FolderTree } from './folder-tree';
 import { UIStore } from '../../../shared/ui.store';
-import { Folder, FolderItem } from '../store/state/folder';
+import { FolderItem } from '../store/state/folder-item';
+import { FolderTree as Folder } from '../store/state/folder-tree';
 import { Store } from '@ngrx/store';
 import { folderFeature } from '../store/folder.feature';
 import { FolderActions } from '../store/folder.actions';
@@ -281,7 +282,6 @@ import { AsyncDataItem } from '../../../core/utils/async-data-item';
             [selectedFolderId]="selectedFolderId()"
             [expandedFolders]="expandedFolders()"
             [dragOverFolder]="dragOverFolder()"
-            (folderSelected)="selectFolder($event)"
             (folderToggled)="toggleFolderExpanded($event)"
             (folderEdit)="editFolder($event.folder, $event.event)"
             (folderDelete)="deleteFolder($event.folder, $event.event)"
@@ -294,45 +294,62 @@ import { AsyncDataItem } from '../../../core/utils/async-data-item';
         } @else {
         <!-- Collapsed folder icons -->
         <div class="space-y-1">
-          @for (folder of folderData.folders; track folder.id; let i = $index) {
-          @if (i < 3) {
-          <a
-            routerLink="/library"
-            [queryParams]="{ folderId: folder.id }"
-            routerLinkActive="bg-muted text-primary-600"
-            class="w-10 h-10 flex items-center justify-center rounded-lg hover:bg-muted transition-colors"
-            [title]="folder.name + ' (' + folder.documentCount + ')'"
+          @for (folder of folderData.folders; track folder.id) {
+          <div
+            (mouseenter)="onFolderHover(folder.id)"
+            (mouseleave)="onFolderLeave()"
           >
-            <svg
-              class="w-4 h-4"
-              [style.color]="folder.color || 'currentColor'"
-              fill="currentColor"
-              viewBox="0 0 20 20"
+            <a
+              routerLink="/library"
+              [queryParams]="{ folderId: folder.id }"
+              routerLinkActive="bg-muted text-primary-600"
+              class="w-10 h-10 flex items-center justify-center rounded-lg hover:bg-muted transition-colors relative"
+              [title]="folder.name + ' (' + folder.documentCount + ')'"
             >
-              <path
-                d="M2 6a2 2 0 012-2h5l2 2h5a2 2 0 012 2v6a2 2 0 01-2 2H4a2 2 0 01-2-2V6z"
-              ></path>
-            </svg>
-          </a>
-          } } @if (folderData.folders.length > 3) {
-          <button
-            class="w-10 h-10 flex items-center justify-center rounded-lg hover:bg-muted transition-colors text-muted-foreground"
-            title="{{ folderData.folders.length - 3 }} more folders"
-          >
-            <svg
-              class="w-4 h-4"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                stroke-width="2"
-                d="M5 12h.01M12 12h.01M19 12h.01M6 12a1 1 0 11-2 0 1 1 0 012 0zm7 0a1 1 0 11-2 0 1 1 0 012 0zm7 0a1 1 0 11-2 0 1 1 0 012 0z"
-              />
-            </svg>
-          </button>
+              <svg
+                class="w-4 h-4"
+                [style.color]="folder.color || 'currentColor'"
+                fill="currentColor"
+                viewBox="0 0 20 20"
+              >
+                <path
+                  d="M2 6a2 2 0 012-2h5l2 2h5a2 2 0 012 2v6a2 2 0 01-2 2H4a2 2 0 01-2-2V6z"
+                ></path>
+              </svg>
+              @if (folder.children.length > 0) {
+              <span
+                class="absolute -top-1 -right-1 w-2 h-2 bg-primary-600 rounded-full"
+              ></span>
+              }
+            </a>
+
+            <!-- Show child folders when hovering -->
+            @if (hoveredFolderId() === folder.id && folder.children.length > 0)
+            {
+            <div class="ml-2 mt-1 space-y-1 animate-in">
+              @for (child of folder.children; track child.id) {
+              <a
+                routerLink="/library"
+                [queryParams]="{ folderId: child.id }"
+                routerLinkActive="bg-muted text-primary-600"
+                class="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-muted transition-colors"
+                [title]="child.name + ' (' + child.documentCount + ')'"
+              >
+                <svg
+                  class="w-3 h-3"
+                  [style.color]="child.color || 'currentColor'"
+                  fill="currentColor"
+                  viewBox="0 0 20 20"
+                >
+                  <path
+                    d="M2 6a2 2 0 012-2h5l2 2h5a2 2 0 012 2v6a2 2 0 01-2 2H4a2 2 0 01-2-2V6z"
+                  ></path>
+                </svg>
+              </a>
+              }
+            </div>
+            }
+          </div>
           }
         </div>
         } }
@@ -376,6 +393,22 @@ import { AsyncDataItem } from '../../../core/utils/async-data-item';
       .sidebar-expanded {
         width: 100%;
       }
+
+      /* Hover expansion animation */
+      @keyframes fadeIn {
+        from {
+          opacity: 0;
+          transform: translateY(-4px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+
+      .animate-in {
+        animation: fadeIn 0.2s ease-out;
+      }
     `,
   ],
 })
@@ -385,16 +418,19 @@ export class FolderSidebar {
 
   // Delayed collapsed state for content switching
   protected contentCollapsed = signal(this.uiStore.sidebarCollapsed());
-  
+
   // Mobile detection
   protected isMobile = signal(false);
+
+  // Track which folder is being hovered in collapsed mode
+  protected hoveredFolderId = signal<string | null>(null);
 
   private timeoutId: number | null = null;
 
   constructor() {
     // Check if mobile on initialization
     this.checkIfMobile();
-    
+
     // Update content collapsed state with delay
     effect(() => {
       const isCollapsed = this.uiStore.sidebarCollapsed();
@@ -416,11 +452,11 @@ export class FolderSidebar {
       }
     });
   }
-  
+
   private checkIfMobile() {
     this.isMobile.set(window.innerWidth < 640); // sm breakpoint
   }
-  
+
   @HostListener('window:resize')
   onResize() {
     this.checkIfMobile();
@@ -437,10 +473,6 @@ export class FolderSidebar {
     folderFeature.selectExpandedFolders
   );
   dragOverFolder = this.store.selectSignal(folderFeature.selectDragOverFolder);
-
-  selectFolder(folderId: string | undefined) {
-    this.store.dispatch(FolderActions.selectFolderCommand({ folderId }));
-  }
 
   toggleFolderExpanded(folderId: string) {
     this.store.dispatch(
@@ -464,15 +496,21 @@ export class FolderSidebar {
 
   onDropToFolder(event: DragEvent, folder: FolderItem) {
     event.preventDefault();
-    // const documentId = event.dataTransfer?.getData('documentId');
-    // if (documentId) {
-    //   this.store.dispatch(
-    //     LibraryActions.addDocumentsToFolderCommand({
-    //       folderId: folder.id,
-    //       documentIds: [documentId],
-    //     })
-    //   );
-    // }
+    event.stopPropagation();
+    this.store.dispatch(
+      FolderActions.setDragOverFolderCommand({ folderId: undefined })
+    );
+    const documentId = event.dataTransfer?.getData('documentId');
+    const folderId = event.dataTransfer?.getData('folderId') || undefined;
+    if (documentId) {
+      this.store.dispatch(
+        FolderActions.addDocumentsToFolderCommand({
+          from: folderId,
+          to: folder.id,
+          documentId,
+        })
+      );
+    }
   }
 
   onDragOver(event: DragEvent, folder: FolderItem) {
@@ -483,12 +521,28 @@ export class FolderSidebar {
   }
 
   onDragLeave() {
-    this.store.dispatch(
-      FolderActions.setDragOverFolderCommand({ folderId: undefined })
-    );
+    // Use a small timeout to prevent flicker when moving between elements
+    setTimeout(() => {
+      this.store.dispatch(
+        FolderActions.setDragOverFolderCommand({ folderId: undefined })
+      );
+    }, 100);
   }
 
   toggleSidebar() {
     this.uiStore.toggleSidebar();
+  }
+
+  onFolderHover(folderId: string) {
+    if (this.uiStore.sidebarCollapsed()) {
+      this.hoveredFolderId.set(folderId);
+    }
+  }
+
+  onFolderLeave() {
+    // Add a small delay to prevent flicker when moving between parent and child
+    setTimeout(() => {
+      this.hoveredFolderId.set(null);
+    }, 100);
   }
 }

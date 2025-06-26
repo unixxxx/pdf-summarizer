@@ -26,10 +26,10 @@ from .config import get_settings
 # Import domain routers
 from .flashcard.router import router as flashcard_router
 from .health.router import router as health_router
-from .library.archive.router import router as archive_router
-from .library.document.router import router as document_router
-from .library.folder.router import router as folder_router
-from .library.tag.router import router as tag_router
+from .archive.router import router as archive_router
+from .document.router import router as document_router
+from .folder.router import router as folder_router
+from .tag.router import router as tag_router
 from .monitoring.router import router as monitoring_router
 from .processing.router import router as processing_router
 from .quiz.router import router as quiz_router

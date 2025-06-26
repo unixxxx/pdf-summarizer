@@ -7,9 +7,9 @@ from langchain.schema.language_model import BaseLanguageModel
 
 from ..common.dependencies import LLMFactoryDep
 from ..common.exceptions import ServiceUnavailableError
-from ..library.document.dependencies import DocumentServiceDep
-from ..library.folder.dependencies import FolderServiceDep
-from ..library.tag.dependencies import TagServiceDep
+from ..document.dependencies import DocumentServiceDep
+from ..folder.dependencies import FolderServiceDep
+from ..tag.dependencies import TagServiceDep
 from .orchestrator import SummarizationOrchestrator
 from .service import SummaryService
 

@@ -4,9 +4,10 @@ from typing import Annotated
 
 from fastapi import Depends
 
-from ..library.document.dependencies import DocumentServiceDep
+from ..document.dependencies import DocumentServiceDep
 from ..storage.dependencies import StorageServiceDep
 from .orchestrator import DocumentProcessingOrchestrator
+from .service import ProcessingService
 
 
 def get_document_processing_orchestrator(
@@ -20,8 +21,18 @@ def get_document_processing_orchestrator(
     )
 
 
+def get_processing_service() -> ProcessingService:
+    """Get processing service instance."""
+    return ProcessingService()
+
+
 # Type aliases for dependency injection
 ProcessingOrchestratorDep = Annotated[
     DocumentProcessingOrchestrator, 
     Depends(get_document_processing_orchestrator)
+]
+
+ProcessingServiceDep = Annotated[
+    ProcessingService,
+    Depends(get_processing_service)
 ]

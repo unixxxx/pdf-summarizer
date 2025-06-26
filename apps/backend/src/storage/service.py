@@ -1,15 +1,23 @@
 """Storage service for handling file uploads to S3 or local storage."""
 
+import logging
 import uuid
 from pathlib import Path
+from typing import Any
+from uuid import UUID
 
 import aioboto3
 import aiofiles
 import aiofiles.os
 from botocore.exceptions import ClientError
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..common.exceptions import StorageError
 from ..config import Settings
+from ..database.models import Document
+
+logger = logging.getLogger(__name__)
 
 
 class StorageService:
@@ -174,6 +182,85 @@ class StorageService:
             except OSError as e:
                 raise StorageError(f"Failed to delete file locally: {str(e)}")
     
+    async def delete_files_batch(self, storage_keys: list[str]) -> dict[str, bool]:
+        """
+        Delete multiple files from storage in batch.
+        
+        Args:
+            storage_keys: List of storage paths/keys for the files
+            
+        Returns:
+            Dict mapping storage_key to success status
+        """
+        if not storage_keys:
+            return {}
+            
+        results = {}
+        
+        if self.is_s3:
+            try:
+                async with self.session.client(
+                    's3',
+                    endpoint_url=self.settings.s3_endpoint_url
+                ) as s3_client:
+                    # S3 allows batch deletion of up to 1000 objects at once
+                    for i in range(0, len(storage_keys), 1000):
+                        batch = storage_keys[i:i+1000]
+                        delete_objects = [{'Key': key} for key in batch]
+                        
+                        response = await s3_client.delete_objects(
+                            Bucket=self.settings.s3_bucket_name,
+                            Delete={
+                                'Objects': delete_objects,
+                                'Quiet': True  # Only return errors
+                            }
+                        )
+                        
+                        # Mark all as successful initially
+                        for key in batch:
+                            results[key] = True
+                            
+                        # Mark failures
+                        if 'Errors' in response:
+                            for error in response['Errors']:
+                                key = error['Key']
+                                # Ignore "not found" errors
+                                if error['Code'] != 'NoSuchKey':
+                                    results[key] = False
+                                    logger.error(f"Failed to delete {key}: {error['Message']}")
+                                    
+            except ClientError as e:
+                logger.error(f"Batch delete failed: {str(e)}")
+                # Mark all as failed
+                for key in storage_keys:
+                    results[key] = False
+        else:
+            # For local storage, use asyncio to delete files concurrently
+            import asyncio
+            
+            async def delete_local_file(key: str) -> tuple[str, bool]:
+                file_path = self.local_path / key
+                try:
+                    if file_path.exists():
+                        await aiofiles.os.remove(str(file_path))
+                    return key, True
+                except OSError as e:
+                    logger.error(f"Failed to delete {key}: {str(e)}")
+                    return key, False
+            
+            # Delete files concurrently with a limit
+            tasks = [delete_local_file(key) for key in storage_keys]
+            completed = await asyncio.gather(*tasks, return_exceptions=True)
+            
+            for result in completed:
+                if isinstance(result, Exception):
+                    logger.error(f"Batch delete error: {result}")
+                else:
+                    key, success = result
+                    results[key] = success
+                    
+        return results
+    
     async def get_file_url(self, storage_key: str, expires_in: int = 3600, filename: str | None = None) -> str:
         """
         Get a presigned URL for file access (S3 only).
@@ -336,3 +423,160 @@ class StorageService:
                 
         except ClientError as e:
             raise StorageError(f"Failed to generate presigned POST: {str(e)}")
+    
+    async def get_document_download_info(
+        self,
+        document_id: UUID,
+        user_id: UUID,
+        db: AsyncSession,
+    ) -> dict[str, Any]:
+        """
+        Get download information for a document.
+        
+        Args:
+            document_id: Document ID
+            user_id: User ID for access control
+            db: Database session
+            
+        Returns:
+            Dictionary with download_url, filename, and is_text_document flag
+            
+        Raises:
+            StorageError: If document not found or access denied
+        """
+        # Get document from database
+        result = await db.execute(
+            select(Document).where(
+                Document.id == document_id,
+                Document.user_id == user_id
+            )
+        )
+        document = result.scalar_one_or_none()
+        
+        if not document:
+            raise StorageError("Document not found")
+        
+        if not document.storage_path:
+            # For text documents, we need a different approach
+            if document.extracted_text:
+                # Ensure filename has .txt extension for text documents
+                filename = document.filename
+                if not filename.endswith('.txt'):
+                    filename = filename.rsplit('.', 1)[0] + '.txt'
+                
+                # Return JSON with a special flag for text documents
+                return {
+                    "download_url": f"/api/v1/storage/text/{document_id}",
+                    "filename": filename,
+                    "is_text_document": True
+                }
+            else:
+                raise StorageError("Document content not available")
+        
+        # For S3, generate presigned URL
+        if self.is_s3:
+            try:
+                presigned_url = await self.get_file_url(
+                    document.storage_path,
+                    expires_in=3600,  # 1 hour
+                    filename=document.filename
+                )
+                return {
+                    "download_url": presigned_url,
+                    "filename": document.filename
+                }
+            except Exception as e:
+                raise StorageError(f"Failed to generate download URL: {str(e)}")
+        
+        # For local storage, return the file path as URL
+        return {
+            "download_url": f"/api/v1/storage/{document.storage_path}",
+            "filename": document.filename
+        }
+    
+    async def get_text_document_content(
+        self,
+        document_id: UUID,
+        user_id: UUID,
+        db: AsyncSession,
+    ) -> tuple[bytes, str]:
+        """
+        Get text document content as bytes with filename.
+        
+        Args:
+            document_id: Document ID
+            user_id: User ID for access control
+            db: Database session
+            
+        Returns:
+            Tuple of (content_bytes, filename)
+            
+        Raises:
+            StorageError: If document not found or content not available
+        """
+        # Get document from database
+        result = await db.execute(
+            select(Document).where(
+                Document.id == document_id,
+                Document.user_id == user_id
+            )
+        )
+        document = result.scalar_one_or_none()
+        
+        if not document:
+            raise StorageError("Document not found")
+        
+        if not document.extracted_text:
+            raise StorageError("Document content not available")
+        
+        # Generate text file content
+        content = document.extracted_text.encode('utf-8')
+        
+        # Ensure filename has .txt extension
+        filename = document.filename
+        if not filename.endswith('.txt'):
+            filename = filename.rsplit('.', 1)[0] + '.txt'
+        
+        return content, filename
+    
+    async def get_file_with_access_check(
+        self,
+        storage_path: str,
+        user_id: UUID,
+    ) -> bytes:
+        """
+        Retrieve a file from storage with access control.
+        
+        Args:
+            storage_path: Storage path/key for the file
+            user_id: User ID for access control
+            
+        Returns:
+            File content as bytes
+            
+        Raises:
+            StorageError: If access denied or file not found
+        """
+        # Security: Ensure the user can only access their own files
+        if not storage_path.startswith(str(user_id)):
+            raise StorageError("Access denied")
+        
+        # Retrieve the file using existing method
+        return await self.retrieve_file(storage_path)
+    
+    def get_content_type_for_path(self, storage_path: str) -> str:
+        """
+        Determine content type based on file path.
+        
+        Args:
+            storage_path: Storage path/key for the file
+            
+        Returns:
+            MIME content type string
+        """
+        if storage_path.endswith('.pdf'):
+            return "application/pdf"
+        elif storage_path.endswith('.txt'):
+            return "text/plain; charset=utf-8"
+        else:
+            return "application/octet-stream"

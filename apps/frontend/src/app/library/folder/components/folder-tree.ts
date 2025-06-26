@@ -13,7 +13,7 @@ import {
   state,
 } from '@angular/animations';
 import { RouterLink, RouterLinkActive } from '@angular/router';
-import { FolderItem } from '../store/state/folder';
+import { FolderItem } from '../store/state/folder-item';
 
 @Component({
   selector: 'app-folder-tree',
@@ -105,15 +105,20 @@ import { FolderItem } from '../store/state/folder';
         </button>
         }
         <a
-          routerLink="/library"
-          [queryParams]="{ folderId: folder.id }"
+          [routerLink]="['/library', folder.id]"
           routerLinkActive="bg-muted text-primary-600"
           class="w-full flex items-center gap-2 px-3 py-2 pl-8 pr-16 text-sm font-medium text-foreground hover:bg-muted rounded-lg transition-all duration-200 cursor-pointer hover:shadow-sm"
           [class.bg-primary-100]="dragOverFolder() === folder.id"
           [class.dark:bg-primary-900]="dragOverFolder() === folder.id"
-          (drop)="folderDrop.emit({ event: $event, folder: folder })"
-          (dragover)="folderDragOver.emit({ event: $event, folder: folder })"
-          (dragleave)="folderDragLeave.emit()"
+          [class.scale-[1.02]]="dragOverFolder() === folder.id"
+          [class.shadow-lg]="dragOverFolder() === folder.id"
+          [class.border-2]="dragOverFolder() === folder.id"
+          [class.border-primary-500]="dragOverFolder() === folder.id"
+          [class.border-dashed]="dragOverFolder() === folder.id"
+          (drop)="onDrop($event, folder)"
+          (dragover)="onDragOver($event, folder)"
+          (dragleave)="onDragLeave($event)"
+          (dragenter)="onDragEnter($event, folder)"
         >
           <svg
             class="w-4 h-4 flex-shrink-0"
@@ -203,7 +208,6 @@ import { FolderItem } from '../store/state/folder';
           [selectedFolderId]="selectedFolderId()"
           [expandedFolders]="expandedFolders()"
           [dragOverFolder]="dragOverFolder()"
-          (folderSelected)="folderSelected.emit($event)"
           (folderToggled)="folderToggled.emit($event)"
           (folderEdit)="folderEdit.emit($event)"
           (folderDelete)="folderDelete.emit($event)"
@@ -225,7 +229,6 @@ export class FolderTree {
   dragOverFolder = input<string | undefined>(undefined);
 
   // Output signals
-  folderSelected = output<string>();
   folderToggled = output<string>();
   folderEdit = output<{
     folder: FolderItem;
@@ -244,4 +247,27 @@ export class FolderTree {
     folder: FolderItem;
   }>();
   folderDragLeave = output<void>();
+
+  onDrop(event: DragEvent, folder: FolderItem) {
+    event.preventDefault();
+    event.stopPropagation();
+    this.folderDrop.emit({ event, folder });
+  }
+
+  onDragOver(event: DragEvent, folder: FolderItem) {
+    event.preventDefault();
+    event.stopPropagation();
+    this.folderDragOver.emit({ event, folder });
+  }
+
+  onDragLeave(event: DragEvent) {
+    event.stopPropagation();
+    this.folderDragLeave.emit();
+  }
+
+  onDragEnter(event: DragEvent, folder: FolderItem) {
+    event.preventDefault();
+    event.stopPropagation();
+    this.folderDragOver.emit({ event, folder });
+  }
 }

@@ -7,9 +7,9 @@ import {
   Validators,
 } from '@angular/forms';
 import { ModalRef, MODAL_REF } from '../../../core/services/modal';
-import { FolderItem } from '../store/state/folder';
+import { FolderItem } from '../store/state/folder-item';
 import { Tag } from '../../tag/store/state/tag';
-import { FolderCreateDto } from '../dtos/folder';
+import { FolderCreateDto } from '../dtos/folder-create';
 import { ToFormControls } from '../../../core/utils/transform';
 import { availableColors } from '../../../core/utils/colors';
 import { ChipInput, ChipItem } from '../../../shared/components/chip-input';
@@ -121,8 +121,10 @@ import { ChipInput, ChipItem } from '../../../shared/components/chip-input';
             class="w-full px-3 py-2 pr-10 text-sm border border-border rounded-md bg-background text-foreground transition-colors focus:outline-none focus:border-primary-500 focus:ring-1 focus:ring-primary-500/10"
           >
             <option [value]="null">No parent (root level)</option>
-            @for (folder of folders(); track folder.id) {
-            <option [value]="folder.id">{{ folder.name }}</option>
+            @for (folder of getTopLevelFolders(); track folder.id) {
+            <option [value]="folder.id">
+              {{ folder.name }}
+            </option>
             }
           </select>
         </div>
@@ -207,10 +209,9 @@ export class FolderCreate {
 
   availableColors = availableColors;
 
-  constructor() {
-    this.form.controls.tags.valueChanges.subscribe((value) => {
-      console.log(value);
-    });
+  getTopLevelFolders(): FolderItem[] {
+    // Only return root level folders to limit nesting to one level
+    return this.folders();
   }
 
   selectColor(color: string) {

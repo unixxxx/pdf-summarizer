@@ -7,8 +7,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..auth.dependencies import CurrentUserDep, get_current_user_ws
 from ..database.session import get_db
-from ..library.document.dependencies import DocumentServiceDep
-from .dependencies import ProcessingOrchestratorDep
+from ..document.dependencies import DocumentServiceDep
+from .dependencies import ProcessingServiceDep
 from .schemas import ProcessingStatusResponse
 
 router = APIRouter(
@@ -31,44 +31,15 @@ async def get_processing_status(
     document_id: UUID,
     current_user: CurrentUserDep,
     document_service: DocumentServiceDep,
-    orchestrator: ProcessingOrchestratorDep,
+    processing_service: ProcessingServiceDep,
     db: AsyncSession = Depends(get_db),
 ) -> ProcessingStatusResponse:
     """Get current processing status for a document."""
     # Get document to verify ownership
     document = await document_service.get_document_by_id(document_id, user_id=current_user.id, db=db)
     
-    # Return processing status based on document state
-    if document.status == "completed":
-        return ProcessingStatusResponse(
-            document_id=str(document_id),
-            stage="ready",
-            progress=100,
-            started_at=document.created_at.isoformat() if document.created_at else None,
-            completed_at=document.updated_at.isoformat() if document.updated_at else None,
-            stages_completed=["uploading", "extracting", "embedding", "enriching"],
-            current_stage_detail="Document processing complete",
-        )
-    elif document.status == "processing":
-        return ProcessingStatusResponse(
-            document_id=str(document_id),
-            stage="processing",
-            progress=50,
-            started_at=document.created_at.isoformat() if document.created_at else None,
-            completed_at=None,
-            stages_completed=["uploading"],
-            current_stage_detail="Processing document...",
-        )
-    else:
-        return ProcessingStatusResponse(
-            document_id=str(document_id),
-            stage="pending",
-            progress=0,
-            started_at=None,
-            completed_at=None,
-            stages_completed=[],
-            current_stage_detail="Waiting to process",
-        )
+    # Delegate status determination to service layer
+    return await processing_service.get_processing_status(document, document_id)
 
 
 @router.websocket("/ws/document/{document_id}/status")
@@ -80,6 +51,10 @@ async def document_status_websocket(
     """WebSocket endpoint for real-time status updates."""
     await websocket.accept()
     
+    # Get processing service instance
+    from .service import ProcessingService
+    processing_service = ProcessingService()
+    
     try:
         # Authenticate user
         user = await get_current_user_ws(websocket, db)
@@ -87,14 +62,9 @@ async def document_status_websocket(
             await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
             return
         
-        # Send initial status
-        await websocket.send_json({
-            "type": "status_update",
-            "document_id": str(document_id),
-            "stage": "ready",
-            "progress": 100,
-            "message": "Document processing complete"
-        })
+        # Send initial status using service
+        status_update = await processing_service.get_websocket_status_update(document_id)
+        await websocket.send_json(status_update)
         
         # Keep connection alive until client disconnects
         while True:

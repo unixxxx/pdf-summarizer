@@ -1,5 +1,5 @@
 import { AsyncDataItem } from '../../../../core/utils/async-data-item';
-import { UploadResult } from './upload';
+import { UploadResult } from './upload-result';
 
 export interface UploadState {
   uploadProgress: number;

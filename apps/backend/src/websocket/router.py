@@ -4,64 +4,15 @@ import logging
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, status
 from fastapi.exceptions import WebSocketException
-from jose import JWTError, jwt
 
-from ..auth.user_service import UserService
-from ..config import get_settings
-from ..database.session import get_db
+from .auth_service import WebSocketAuthService
 from .connection_manager import manager
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
-
-async def get_current_user_ws(
-    websocket: WebSocket,
-) -> dict | None:
-    """Authenticate WebSocket connections."""
-    # Extract token from query parameters
-    query_params = dict(websocket.query_params)
-    token = query_params.get('token')
-    
-    if not token:
-        await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
-        raise WebSocketException(code=status.WS_1008_POLICY_VIOLATION)
-    
-    settings = get_settings()
-    
-    try:
-        # Verify JWT token
-        payload = jwt.decode(
-            token,
-            settings.jwt_secret_key,
-            algorithms=[settings.jwt_algorithm]
-        )
-        user_id: str = payload.get("sub")
-        if user_id is None:
-            await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
-            raise WebSocketException(code=status.WS_1008_POLICY_VIOLATION)
-        
-        # Get user from database
-        async for db in get_db():
-            user_service = UserService()
-            user = await user_service.get_user(db, user_id)
-            if user is None:
-                await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
-                raise WebSocketException(code=status.WS_1008_POLICY_VIOLATION)
-            
-            return {
-                "id": user.id,
-                "email": user.email,
-                "name": user.name
-            }
-            
-    except JWTError:
-        await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
-        raise WebSocketException(code=status.WS_1008_POLICY_VIOLATION)
-    except Exception as e:
-        logger.error(f"WebSocket authentication error: {e}")
-        await websocket.close(code=status.WS_1011_INTERNAL_ERROR)
-        raise WebSocketException(code=status.WS_1011_INTERNAL_ERROR)
+# Initialize auth service
+auth_service = WebSocketAuthService()
 
 
 @router.websocket("/ws")
@@ -72,7 +23,7 @@ async def websocket_endpoint(websocket: WebSocket):
     
     try:
         # Authenticate user
-        user = await get_current_user_ws(websocket)
+        user = await auth_service.authenticate_websocket(websocket)
         user_id = user["id"]
         
         # Connect user

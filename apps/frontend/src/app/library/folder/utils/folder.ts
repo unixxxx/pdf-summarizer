@@ -1,4 +1,4 @@
-import { FolderItem } from '../store/state/folder';
+import { FolderItem } from '../store/state/folder-item';
 
 export function flattenFolders(folders: FolderItem[], level = 0): FolderItem[] {
   const result: FolderItem[] = [];

@@ -1,18 +1,16 @@
 import { createActionGroup, emptyProps, props } from '@ngrx/store';
-import {
-  FolderCreateDto,
-  FolderDto,
-  FolderItemDto,
-  FolderUpdateDto,
-} from '../dtos/folder';
-import { FolderItem } from './state/folder';
+import { FolderTreeDto } from '../dtos/folder-tree';
+import { FolderItemDto } from '../dtos/folder-item';
+import { FolderCreateDto } from '../dtos/folder-create';
+import { FolderUpdateDto } from '../dtos/folder-update';
+import { FolderItem } from './state/folder-item';
 
 export const FolderActions = createActionGroup({
   source: 'Folder',
   events: {
     // Folder fetch operations
     'Fetch folders command': emptyProps(),
-    'Fetch folders success event': props<{ folder: FolderDto }>(),
+    'Fetch folders success event': props<{ folder: FolderTreeDto }>(),
     'Fetch folders failure event': props<{ error: string }>(),
 
     // Folder CRUD operations
@@ -37,5 +35,18 @@ export const FolderActions = createActionGroup({
     'Open create folder modal command': props<{ parentId?: string }>(),
     'Open edit folder modal command': props<{ folder: FolderItem }>(),
     'Open delete folder modal command': props<{ folder: FolderItem }>(),
+
+    // Document operations
+    'Add documents to folder command': props<{
+      from: string | undefined;
+      to: string;
+      documentId: string;
+    }>(),
+    'Add documents to folder success event': props<{
+      from: string | undefined;
+      to: string;
+      documentId: string;
+    }>(),
+    'Add documents to folder failure event': props<{ error: string }>(),
   },
 });

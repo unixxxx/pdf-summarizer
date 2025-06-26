@@ -4,13 +4,15 @@ import logging
 from typing import Any
 from uuid import UUID
 
+from fastapi import UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..database.models import Document, Summary
 from ..embeddings.service import EmbeddingsService
-from ..library.document.service import DocumentService
-from ..library.folder.service import FolderService
-from ..library.tag.service import TagService
+from ..document.service import DocumentService
+from ..folder.service import FolderService
+from ..tag.service import TagService
+from ..storage.service import StorageService
 from .schemas import SummaryOptions
 from .service import SummaryService
 
@@ -263,3 +265,76 @@ class SummarizationOrchestrator:
         await db.flush()
         
         return summary
+    
+    async def upload_and_summarize(
+        self,
+        file: UploadFile,
+        user_id: UUID,
+        options: SummaryOptions,
+        storage_service: StorageService,
+        db: AsyncSession,
+    ) -> tuple[Summary, Document]:
+        """
+        Upload a file and summarize it in one operation.
+        
+        Args:
+            file: The uploaded file
+            user_id: User ID
+            options: Summary options
+            storage_service: Storage service for file storage
+            db: Database session
+            
+        Returns:
+            Tuple of (summary, document)
+        """
+        # Read file content
+        content = await file.read()
+        
+        # Process file to extract text and metadata
+        text, metadata, file_type = await self.summarizer_service.process_uploaded_file(
+            file_content=content,
+            filename=file.filename,
+            content_type=file.content_type,
+        )
+        
+        # Store file
+        storage_path = await storage_service.store_file(
+            content=content,
+            user_id=str(user_id),
+            file_type=file_type,
+            original_filename=file.filename,
+        )
+        
+        # Create document
+        document, _ = await self.document_service.create_document(
+            user_id=user_id,
+            filename=file.filename,
+            content=content,
+            file_size=len(content),
+            storage_path=storage_path,
+            db=db,
+        )
+        
+        # Update with extracted text
+        word_count = len(text.split())
+        document = await self.document_service.update_document_content(
+            document_id=document.id,
+            extracted_text=text,
+            word_count=word_count,
+            db=db,
+        )
+        
+        # Update page count if available
+        if metadata.get("page_count"):
+            document.page_count = metadata["page_count"]
+            await db.flush()
+        
+        # Create summary
+        summary = await self.summarize_document(
+            document_id=document.id,
+            user_id=user_id,
+            options=options,
+            db=db,
+        )
+        
+        return summary, document

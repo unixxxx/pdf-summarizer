@@ -526,7 +526,7 @@ interface ChatMessageDisplay {
     `,
   ],
 })
-export class ChatComponent implements OnInit {
+export class Chat implements OnInit {
   private messagesContainer = viewChild<ElementRef>('messagesContainer');
 
   private route = inject(ActivatedRoute);
