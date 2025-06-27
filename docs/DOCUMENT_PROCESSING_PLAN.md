@@ -185,16 +185,17 @@ async def complete_pdf_upload(
 
 ```python
 # apps/worker/tasks/document_processor.py
-import httpx
+from redis.asyncio import Redis
 from typing import Dict
+import json
 
-class ProgressReporter:
-    def __init__(self, api_base_url: str, job_id: str, document_id: str, user_id: str):
-        self.api_base_url = api_base_url
+class RedisProgressReporter:
+    def __init__(self, redis: Redis, job_id: str, document_id: str, user_id: str):
+        self.redis = redis
         self.job_id = job_id
         self.document_id = document_id
         self.user_id = user_id
-        self.client = httpx.AsyncClient()
+        self.channel = "document_progress"
     
     async def report_progress(
         self, 
@@ -203,38 +204,35 @@ class ProgressReporter:
         message: str,
         details: Dict = None
     ):
-        """Report progress to backend API"""
+        """Report progress via Redis pub/sub"""
         try:
-            await self.client.post(
-                f"{self.api_base_url}/api/v1/jobs/progress",
-                json={
-                    "job_id": self.job_id,
-                    "document_id": self.document_id,
-                    "user_id": self.user_id,
-                    "stage": stage,
-                    "progress": progress,
-                    "message": message,
-                    "details": details or {}
-                }
+            progress_data = {
+                "job_id": self.job_id,
+                "document_id": self.document_id,
+                "user_id": self.user_id,
+                "stage": stage,
+                "progress": progress,
+                "message": message,
+                "details": details or {}
+            }
+            
+            await self.redis.publish(
+                self.channel,
+                json.dumps(progress_data)
             )
         except Exception as e:
             logger.error(f"Failed to report progress: {e}")
-    
-    async def __aenter__(self):
-        return self
-    
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
-        await self.client.aclose()
 
 async def process_document(ctx: dict, pdf_id: str, user_id: str):
     """Main document processing task with progress reporting"""
     
-    async with ProgressReporter(
-        api_base_url=settings.API_BASE_URL,
+    redis = ctx['redis']
+    reporter = RedisProgressReporter(
+        redis=redis,
         job_id=ctx['job_id'],
         document_id=pdf_id,
         user_id=user_id
-    ) as reporter:
+    )
         
         try:
             # 1. Fetch document (5%)
@@ -551,12 +549,13 @@ async def process_batch_documents(ctx: dict, document_ids: List[str], user_id: s
     batch_id = f"batch:{uuid4()}"
     total_docs = len(document_ids)
     
-    async with ProgressReporter(
-        api_base_url=settings.API_BASE_URL,
+    redis = ctx['redis']
+    reporter = RedisProgressReporter(
+        redis=redis,
         job_id=batch_id,
         document_id=None,
         user_id=user_id
-    ) as reporter:
+    )
         
         for i, doc_id in enumerate(document_ids):
             # Report batch progress

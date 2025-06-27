@@ -7,8 +7,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..auth.dependencies import get_current_user
 from ..common.monitoring import metrics
-from ..common.progress_tracker import progress_tracker
-from ..database.models import User
+from .progress_tracker import progress_tracker
+from shared.models import User
 from ..database.session import get_db
 
 router = APIRouter(prefix="/monitoring", tags=["monitoring"])

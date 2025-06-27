@@ -7,7 +7,8 @@ from sqlalchemy.ext.asyncio import (
     async_sessionmaker,
     create_async_engine,
 )
-from sqlalchemy.orm import declarative_base
+
+from shared.models import Base  # Import Base from shared models
 
 from ..config import get_settings
 
@@ -42,8 +43,7 @@ async_session = async_sessionmaker(
     expire_on_commit=False,
 )
 
-# Create base class for models
-Base = declarative_base()
+# Base is now imported from shared models
 
 
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
@@ -56,14 +56,3 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
             await session.rollback()
             raise
 
-
-async def get_async_session() -> AsyncGenerator[AsyncSession, None]:
-    """Get database session for background tasks."""
-    async with async_session() as session:
-        try:
-            yield session
-        except Exception:
-            await session.rollback()
-            raise
-        finally:
-            await session.close()

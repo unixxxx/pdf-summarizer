@@ -13,7 +13,7 @@ from ..common.exceptions import (
     ConflictException,
     NotFoundException,
 )
-from ..database.models import Document, Folder, Tag, User, folder_tags
+from shared.models import Document, Folder, Tag, User, folder_tags
 from ..tag.service import TagService
 from .schemas import (
     FolderCreate,

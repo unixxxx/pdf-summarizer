@@ -7,7 +7,7 @@ from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..common.cache_service import CacheService
-from ..database.models import Tag
+from shared.models import Tag
 from .schemas import TagResponse
 from .service import TagService
 

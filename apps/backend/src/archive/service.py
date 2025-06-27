@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from ..common.exceptions import NotFoundException
-from ..database.models import Document, Folder, User
+from shared.models import Document, Folder, User
 from ..storage.service import StorageService
 from .schemas import (
     ArchivedDocument,

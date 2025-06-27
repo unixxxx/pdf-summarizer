@@ -1,1 +1,1 @@
-"""Database module for PDF Summarizer."""
+"""Database module for DocuLearn."""

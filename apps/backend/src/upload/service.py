@@ -4,6 +4,8 @@ import logging
 from datetime import datetime, timedelta, timezone
 from uuid import UUID, uuid4
 
+from arq import create_pool
+from arq.connections import RedisSettings
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..common.exceptions import (
@@ -15,7 +17,6 @@ from ..common.exceptions import (
 from ..config import Settings
 from ..document.service import DocumentService
 from ..folder.service import FolderService
-from ..processing.orchestrator import DocumentProcessingOrchestrator
 from ..storage.service import StorageService
 from .schemas import (
     CompleteUploadRequest,
@@ -127,14 +128,31 @@ class UploadService:
             f"Document {document.id} marked as upload complete, status: {document.status}"
         )
 
-        # Processing can be triggered via POST /upload/process/{document_id}
-
-        return CompleteUploadResponse(
-            document_id=str(document.id),
-            status="uploaded",
-            stage="complete",
-            progress=100,
-        )
+        # Automatically enqueue document processing
+        redis_settings = RedisSettings.from_dsn(self.settings.redis_url)
+        redis = await create_pool(redis_settings)
+        
+        try:
+            job = await redis.enqueue_job(
+                "process_document",  # Function name in worker
+                str(document.id),
+                str(user_id),
+                _job_id=f"doc:{document.id}",
+                _queue_name="doculearn:queue",
+            )
+            
+            logger.info(
+                f"Document processing job queued for document {document.id}, job_id: {job.job_id}"
+            )
+            
+            return CompleteUploadResponse(
+                document_id=str(document.id),
+                status="processing",
+                stage="queued",
+                progress=0,
+            )
+        finally:
+            await redis.close()
 
     async def _get_folder_name(
         self,
@@ -147,7 +165,7 @@ class UploadService:
             return "unfiled"
 
         # Get user object first
-        from ..database.models import User
+        from shared.models import User
 
         user = await db.get(User, user_id)
         if not user:
@@ -205,7 +223,7 @@ class UploadService:
         self,
         document_id: UUID,
         user_id: UUID,
-        orchestrator: DocumentProcessingOrchestrator,
+        orchestrator,  # Optional, for backward compatibility
         db: AsyncSession,
     ) -> dict:
         """Trigger document processing for an uploaded document."""
@@ -232,31 +250,29 @@ class UploadService:
                 db=db,
             )
             
-            # Get file content from storage
-            file_content = await self.storage_service.get_file(document.storage_path)
+            # Enqueue document processing job
+            redis_settings = RedisSettings.from_dsn(self.settings.redis_url)
+            redis = await create_pool(redis_settings)
             
-            # Process document
-            await orchestrator.process_uploaded_document(
-                document_id=document_id,
-                file_content=file_content,
-                user_id=user_id,
-                db=db,
-            )
-            
-            # Update status to completed
-            await self.document_service.update_document_status(
-                document_id=document_id,
-                status="completed",
-                db=db,
-            )
-            
-            await db.commit()
-            
-            return {
-                "document_id": str(document_id),
-                "status": "processing_started",
-                "message": "Document processing has been triggered"
-            }
+            try:
+                job = await redis.enqueue_job(
+                    "process_document",  # Function name in worker
+                    str(document_id),
+                    str(user_id),
+                    _job_id=f"doc:{document_id}",
+                    _queue_name="doculearn:queue",
+                )
+                
+                await db.commit()
+                
+                return {
+                    "document_id": str(document_id),
+                    "job_id": job.job_id,
+                    "status": "processing_queued",
+                    "message": "Document processing has been queued"
+                }
+            finally:
+                await redis.close()
             
         except NotFoundException:
             raise NotFoundException("Document not found or access denied")

@@ -1,6 +1,5 @@
-"""Processing module for document processing pipeline."""
+"""Processing module for document processing status."""
 
-from .orchestrator import DocumentProcessingOrchestrator
 from .service import ProcessingService
 
-__all__ = ["DocumentProcessingOrchestrator", "ProcessingService"]
+__all__ = ["ProcessingService"]

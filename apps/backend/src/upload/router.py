@@ -14,7 +14,6 @@ from ..common.exceptions import (
 )
 from ..config import get_settings
 from ..database.session import get_db
-from ..processing.dependencies import ProcessingOrchestratorDep
 from ..storage.dependencies import StorageServiceDep
 from .schemas import (
     CompleteUploadRequest,
@@ -125,7 +124,7 @@ async def get_upload_status(
     current_user: CurrentUserDep,
 ) -> dict:
     """Get the processing status of an upload."""
-    # This endpoint can be used to check Celery task status
+    # This endpoint can be used to check job status via arq
     # For now, return a placeholder
     return {
         "upload_id": upload_id,
@@ -144,7 +143,6 @@ async def get_upload_status(
 async def trigger_document_processing(
     document_id: UUID,
     current_user: CurrentUserDep,
-    orchestrator: ProcessingOrchestratorDep,
     storage_service: StorageServiceDep,
     db: AsyncSession = Depends(get_db),
 ) -> dict:
@@ -156,7 +154,7 @@ async def trigger_document_processing(
         return await upload_service.trigger_document_processing(
             document_id=document_id,
             user_id=current_user.id,
-            orchestrator=orchestrator,
+            orchestrator=None,  # Now using arq worker
             db=db,
         )
         

@@ -8,7 +8,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..common.exceptions import NotFoundException
-from ..database.models import Document, DocumentStatus, Folder, Summary
+from shared.models import Document, DocumentStatus, Folder, Summary
 from ..tag.schemas import TagResponse
 from .export_service import DocumentExporter
 from .schemas import (

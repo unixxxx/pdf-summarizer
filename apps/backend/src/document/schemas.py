@@ -6,7 +6,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
-from ..database.models import DocumentStatus
+from shared.models import DocumentStatus
 from ..tag.schemas import TagResponse
 
 

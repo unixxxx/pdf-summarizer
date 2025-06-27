@@ -15,7 +15,7 @@ sys.path.append(str(Path(__file__).parent.parent / "src"))
 # Import our configuration and models
 from src.config import get_settings
 from src.database.session import Base
-from src.database.models import *  # noqa: F403, F401 - Import all models
+from shared.models import *  # noqa: F403, F401 - Import all models
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.

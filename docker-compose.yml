@@ -1,11 +1,11 @@
 services:
   postgres:
     image: pgvector/pgvector:pg16
-    container_name: pdf_summarizer_db
+    container_name: doculearn_db
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: pdf_summarizer
+      POSTGRES_DB: doculearn
     ports:
       - '5432:5432'
     volumes:
@@ -18,7 +18,7 @@ services:
 
   ollama:
     image: ollama/ollama:latest
-    container_name: pdf_summarizer_ollama
+    container_name: doculearn_ollama
     ports:
       - '11434:11434'
     volumes:
@@ -33,7 +33,7 @@ services:
 
   redis:
     image: redis:7-alpine
-    container_name: pdf_summarizer_redis
+    container_name: doculearn_redis
     ports:
       - '6379:6379'
     volumes:
@@ -44,6 +44,34 @@ services:
       interval: 5s
       timeout: 3s
       retries: 5
+
+  worker:
+    build:
+      context: ./apps/worker
+      dockerfile: Dockerfile
+    container_name: doculearn_worker
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      - WORKER_NAME=doculearn-worker
+      - REDIS_URL=redis://redis:6379/0
+      - API_BASE_URL=http://backend:8000
+      - DATABASE_URL=postgresql+asyncpg://postgres:postgres@postgres:5432/pdf_summarizer
+      - LLM_PROVIDER=${LLM_PROVIDER:-ollama}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - OLLAMA_BASE_URL=http://ollama:11434
+      - OLLAMA_MODEL=${OLLAMA_MODEL:-llama2}
+      - LOG_LEVEL=INFO
+    volumes:
+      - ./apps/worker:/app
+      - /tmp/doculearn/uploads:/tmp/doculearn/uploads
+    networks:
+      - default
+    restart: unless-stopped
+    command: python -m src
 
 volumes:
   postgres_data:

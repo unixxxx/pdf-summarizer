@@ -17,23 +17,6 @@ class DocuLearnException(HTTPException):
 
 
 
-class SummarizationError(DocuLearnException):
-    """Raised when summarization fails."""
-
-    def __init__(self, detail: str = "Failed to generate summary"):
-        super().__init__(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=detail
-        )
-
-
-class OpenAIConfigError(DocuLearnException):
-    """Raised when OpenAI is not properly configured."""
-
-    def __init__(self):
-        super().__init__(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="OpenAI API is not configured. Please check API key settings",
-        )
 
 
 class ServiceUnavailableError(DocuLearnException):
@@ -109,19 +92,6 @@ class ExternalAPIError(DocuLearnException):
         )
 
 
-class LLMError(ExternalAPIError):
-    """Raised when LLM API calls fail."""
-
-    def __init__(self, detail: str, provider: str | None = None):
-        service = f"LLM ({provider})" if provider else "LLM"
-        super().__init__(service=service, detail=detail)
-
-
-class EmbeddingError(ExternalAPIError):
-    """Raised when embedding generation fails."""
-
-    def __init__(self, detail: str):
-        super().__init__(service="Embedding", detail=detail)
 
 
 class OAuthError(ExternalAPIError):

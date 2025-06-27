@@ -8,7 +8,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..common.exceptions import ConflictException, NotFoundException
-from ..database.models import User as UserModel
+from shared.models import User as UserModel
 from .schemas import User as UserSchema
 from .schemas import UserCreate
 

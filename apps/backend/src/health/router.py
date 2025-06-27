@@ -1,10 +1,11 @@
 from typing import Annotated
 
 from fastapi import APIRouter, Depends
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..common.dependencies import LLMFactoryDep
 from ..common.schemas import HealthResponse, MessageResponse
 from ..config import Settings, get_settings
+from ..database.session import get_db
 
 router = APIRouter(
     tags=["Health & Status"], responses={
@@ -20,7 +21,7 @@ router = APIRouter(
 async def root() -> MessageResponse:
     """API root endpoint."""
     return MessageResponse(
-        message="PDF Summarizer API is running. Visit /docs for API documentation."
+        message="DocuLearn API is running. Visit /docs for API documentation."
     )
 
 
@@ -32,19 +33,31 @@ async def root() -> MessageResponse:
 )
 async def health_check(
     settings: Annotated[Settings, Depends(get_settings)],
-    factory: LLMFactoryDep,
+    db: AsyncSession = Depends(get_db),
 ) -> HealthResponse:
     """Check API health and dependent services."""
     services = {
-        "pdf_processor": True,  # PDF service is always available
+        "api": True,
+        "database": False,
+        "redis": False,
     }
 
-    # Check if LLM service is configured
+    # Check database connectivity
     try:
-        factory.create_chat_model()
-        services["llm"] = True
+        await db.execute("SELECT 1")
+        services["database"] = True
     except Exception:
-        services["llm"] = False
+        services["database"] = False
+
+    # Check Redis connectivity
+    try:
+        from arq import create_pool
+        redis = await create_pool(settings.redis_url)
+        await redis.ping()
+        await redis.close()
+        services["redis"] = True
+    except Exception:
+        services["redis"] = False
 
     # Determine overall health
     all_healthy = all(services.values())

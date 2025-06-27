@@ -2,7 +2,7 @@
   "name": "worker",
   "$schema": "../../node_modules/nx/schemas/project-schema.json",
   "projectType": "application",
-  "sourceRoot": "apps/worker/worker",
+  "sourceRoot": "apps/worker/src",
   "targets": {
     "lock": {
       "executor": "@nxlv/python:lock",
@@ -41,7 +41,7 @@
       "executor": "@nxlv/python:ruff-check",
       "outputs": [],
       "options": {
-        "lintFilePatterns": ["worker", "tests"]
+        "lintFilePatterns": ["src", "tests"]
       },
       "cache": true
     },
@@ -49,7 +49,7 @@
       "executor": "@nxlv/python:ruff-format",
       "outputs": [],
       "options": {
-        "filePatterns": ["worker", "tests"]
+        "filePatterns": ["src", "tests"]
       },
       "cache": true
     },
@@ -64,6 +64,13 @@
         "cwd": "{projectRoot}"
       },
       "cache": true
+    },
+    "serve": {
+      "executor": "@nxlv/python:run-commands",
+      "options": {
+        "command": "uv run python -m arq src.worker_settings.WorkerSettings",
+        "cwd": "{projectRoot}"
+      }
     },
     "install": {
       "executor": "@nxlv/python:install",

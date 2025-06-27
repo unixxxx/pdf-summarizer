@@ -8,7 +8,7 @@ from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
 
 from .auth.router import router as auth_router
-from .chat.router import router as chat_router
+from .chat.async_router import router as chat_router
 from .common.cache_service import CacheService
 from .common.exceptions import (
     DatabaseError,
@@ -17,14 +17,13 @@ from .common.exceptions import (
     RateLimitError,
     ValidationError,
 )
-from .common.llm_factory import UnifiedLLMFactory
 from .common.logging import get_logger, setup_logging
 from .common.monitoring import PerformanceMonitoringMiddleware, metrics
 from .common.schemas import ErrorResponse
 from .config import get_settings
 
 # Import domain routers
-from .flashcard.router import router as flashcard_router
+from .flashcard.async_router import router as flashcard_router
 from .health.router import router as health_router
 from .archive.router import router as archive_router
 from .document.router import router as document_router
@@ -32,9 +31,9 @@ from .folder.router import router as folder_router
 from .tag.router import router as tag_router
 from .monitoring.router import router as monitoring_router
 from .processing.router import router as processing_router
-from .quiz.router import router as quiz_router
+from .quiz.async_router import router as quiz_router
 from .storage.router import router as storage_router
-from .summarization.router import router as summarization_router
+from .summarization.async_router import router as summarization_router
 from .upload.router import router as upload_router
 from .websocket.connection_manager import manager as ws_manager
 from .websocket.router import router as websocket_router
@@ -48,7 +47,7 @@ logger = get_logger(__name__)
 async def lifespan(app: FastAPI):
     """Handle application lifecycle events."""
     # Startup
-    logger.info("Starting PDF Summarizer API...")
+    logger.info("Starting DocuLearn API...")
     settings = get_settings()
 
     # Log configuration
@@ -74,20 +73,8 @@ async def lifespan(app: FastAPI):
     else:
         logger.info("Caching is disabled")
     
-    # Check LLM configuration using factory
-    try:
-        llm_factory = UnifiedLLMFactory(settings)
-        provider_info = llm_factory.get_provider_info()
-        logger.info(f"LLM Provider: {provider_info['provider']}")
-        logger.info(f"LLM Model: {provider_info.get('model', 'N/A')}")
-        
-        if provider_info.get('base_url'):
-            logger.info(f"LLM Base URL: {provider_info['base_url']}")
-        if provider_info.get('embedding_model'):
-            logger.info(f"Embedding Model: {provider_info['embedding_model']}")
-            
-    except Exception as e:
-        logger.warning(f"LLM configuration error: {str(e)}")
+    # LLM is now handled by the worker service
+    logger.info("LLM processing is handled by the worker service")
 
     # Check OAuth configuration
     if settings.google_oauth_enabled:

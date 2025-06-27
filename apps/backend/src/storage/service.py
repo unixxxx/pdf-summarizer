@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..common.exceptions import StorageError
 from ..config import Settings
-from ..database.models import Document
+from shared.models import Document
 
 logger = logging.getLogger(__name__)
 

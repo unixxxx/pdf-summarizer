@@ -2,7 +2,7 @@
 
 from uuid import UUID
 
-from ..database.models import Document
+from shared.models import Document
 from .schemas import ProcessingStatusResponse
 
 

@@ -11,15 +11,14 @@ from .service import TagService
 
 def get_tag_service() -> TagService:
     """Get tag service instance."""
-    # Don't inject embeddings service - it's optional for tags
-    return TagService(None)
+    return TagService()
 
 
 def get_cached_tag_service(
     cache_service: CacheServiceDep,
 ) -> CachedTagService:
     """Get cached tag service instance."""
-    tag_service = TagService(None)
+    tag_service = TagService()
     return CachedTagService(tag_service, cache_service)
 
 

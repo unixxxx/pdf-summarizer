@@ -11,33 +11,11 @@ from tenacity import (
 )
 from tenacity.before_sleep import before_sleep_log
 
-from .exceptions import ExternalAPIError, LLMError, RateLimitError
+from .exceptions import ExternalAPIError, RateLimitError
 
 logger = logging.getLogger(__name__)
 
 
-def retry_on_llm_error(max_attempts: int = 3) -> Callable:
-    """
-    Specialized retry decorator for LLM operations.
-    
-    Retries on:
-    - LLMError
-    - RateLimitError
-    - Connection errors
-    
-    Args:
-        max_attempts: Maximum number of retry attempts
-        
-    Returns:
-        Decorated function with LLM-specific retry logic
-    """
-    return retry(
-        stop=stop_after_attempt(max_attempts),
-        wait=wait_exponential(multiplier=2.0, min=2.0, max=30.0),
-        retry=retry_if_exception_type((LLMError, RateLimitError, ConnectionError, TimeoutError)),
-        before_sleep=before_sleep_log(logger.getChild("llm_retry"), logging.WARNING),
-        reraise=True,
-    )
 
 
 def retry_on_external_api(
