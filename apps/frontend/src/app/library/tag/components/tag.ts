@@ -2,7 +2,6 @@ import {
   Component,
   ChangeDetectionStrategy,
   input,
-  output,
   computed,
 } from '@angular/core';
 
@@ -15,16 +14,9 @@ import { Tag as TagModel } from '../store/state/tag';
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <span
-      [class]="getClasses()"
-      [style.background-color]="backgroundColor()"
+      class="inline-flex items-center font-medium rounded-full transition-colors px-1.5 py-0.5 text-xs"
+      [style.background-color]="tag().color"
       [style.color]="textColor()"
-      [style.border-color]="borderColor()"
-      (click)="handleClick($event)"
-      [class.cursor-pointer]="clickable()"
-      [attr.role]="clickable() ? 'button' : null"
-      [attr.tabindex]="clickable() ? 0 : null"
-      (keydown.enter)="handleClick($event)"
-      (keydown.space)="handleClick($event)"
     >
       {{ tag().name }}
     </span>
@@ -33,82 +25,65 @@ import { Tag as TagModel } from '../store/state/tag';
 export class Tag {
   // Input signals
   tag = input.required<TagModel>();
-  variant = input<'default' | 'filter' | 'small'>('default');
-  selected = input(false);
-  clickable = input(false);
-
-  // Output signals
-  tagClick = output<TagModel>();
-
-  // Computed properties
-  backgroundColor = computed(() => {
-    const tagValue = this.tag();
-    const variantValue = this.variant();
-    const selectedValue = this.selected();
-
-    if (variantValue === 'filter' && selectedValue) {
-      return tagValue.color + '20'; // 20% opacity
-    }
-    if (variantValue === 'default') {
-      return tagValue.color + '20'; // 20% opacity
-    }
-    return 'transparent';
-  });
 
   textColor = computed(() => {
     const tagValue = this.tag();
-    const variantValue = this.variant();
-    const selectedValue = this.selected();
+    
+    // Handle missing color
+    if (!tagValue.color) {
+      return 'currentColor';
+    }
 
-    if (variantValue === 'filter' && selectedValue) {
-      return tagValue.color;
-    }
-    if (variantValue === 'default') {
-      return tagValue.color;
-    }
-    return 'currentColor';
+    // Calculate text color based on background color contrast
+    return this.getContrastTextColor(tagValue.color);
   });
 
-  borderColor = computed(() => {
-    const tagValue = this.tag();
-    const variantValue = this.variant();
-    const selectedValue = this.selected();
-
-    if (variantValue === 'filter') {
-      return selectedValue ? tagValue.color : undefined;
-    }
-    return undefined;
-  });
-
-  getClasses(): string {
-    const baseClasses =
-      'inline-flex items-center font-medium rounded-full transition-colors';
-
-    const sizeClasses = {
-      default: 'px-2 py-0.5 text-xs',
-      filter: 'px-3 py-1 text-sm',
-      small: 'px-1.5 py-0.5 text-xs',
+  /**
+   * Determines whether to use black or white text based on the background color
+   * using the WCAG contrast ratio formula
+   */
+  private getContrastTextColor(backgroundColor: string): string {
+    // Convert hex to RGB
+    const hexToRgb = (hex: string): { r: number; g: number; b: number } | null => {
+      // Remove # if present
+      hex = hex.replace('#', '');
+      
+      // Support 3-character hex
+      if (hex.length === 3) {
+        hex = hex.split('').map(char => char + char).join('');
+      }
+      
+      // Validate hex
+      if (!/^[0-9A-Fa-f]{6}$/.test(hex)) {
+        return null;
+      }
+      
+      const result = /^([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+      return result ? {
+        r: parseInt(result[1], 16),
+        g: parseInt(result[2], 16),
+        b: parseInt(result[3], 16)
+      } : null;
     };
 
-    const variantClasses = {
-      default: '',
-      filter: 'border hover:bg-muted',
-      small: '',
+    // Calculate relative luminance
+    const getLuminance = (r: number, g: number, b: number): number => {
+      const [rs, gs, bs] = [r, g, b].map(c => {
+        c = c / 255;
+        return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+      });
+      return 0.2126 * rs + 0.7152 * gs + 0.0722 * bs;
     };
 
-    const selectedClasses = this.selected()
-      ? 'bg-primary-100 dark:bg-primary-900'
-      : '';
-
-    return `${baseClasses} ${sizeClasses[this.variant()]} ${
-      variantClasses[this.variant()]
-    } ${selectedClasses}`;
-  }
-
-  handleClick(event: Event) {
-    if (this.clickable()) {
-      event.stopPropagation();
-      this.tagClick.emit(this.tag());
+    const rgb = hexToRgb(backgroundColor);
+    if (!rgb) {
+      return '#000000'; // Default to black if color parsing fails
     }
+
+    const luminance = getLuminance(rgb.r, rgb.g, rgb.b);
+    
+    // Use white text for dark backgrounds, black for light backgrounds
+    // Threshold of 0.5 works well for most cases
+    return luminance > 0.5 ? '#000000' : '#FFFFFF';
   }
 }

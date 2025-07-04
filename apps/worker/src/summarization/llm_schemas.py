@@ -43,8 +43,16 @@ class ComprehensiveDocumentAnalysis(BaseModel):
             tag = re.sub(r'\s+', '-', tag)
             tag = re.sub(r'-+', '-', tag).strip('-')
             
-            if tag and len(tag) > 1 and tag not in cleaned_tags:
+            # Ensure tag is at least 2 characters and not just numbers
+            if tag and len(tag) >= 2 and not tag.isdigit() and tag not in cleaned_tags:
                 cleaned_tags.append(tag)
+        
+        # Ensure we have at least 3 valid tags
+        if len(cleaned_tags) < 3:
+            raise ValueError(
+                f"At least 3 valid tags required (got {len(cleaned_tags)}). "
+                f"Tags must be at least 2 characters long and descriptive."
+            )
         
         return cleaned_tags[:8]  # Ensure max 8 tags
     

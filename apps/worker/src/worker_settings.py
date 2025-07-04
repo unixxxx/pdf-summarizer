@@ -17,7 +17,7 @@ from src.embeddings.processor import (
 from src.flashcard.processor import generate_flashcards
 from src.maintenance.tasks import cleanup_orphaned_files
 from src.quiz.processor import generate_quiz
-from src.summarization.processor import summarize_text
+from src.summarization.processor import generate_document_summary, summarize_text
 
 settings = get_settings()
 
@@ -123,6 +123,7 @@ class WorkerSettings:
         # Document processing
         process_document,
         generate_document_embeddings,
+        generate_document_summary,
         summarize_text,
         
         # Content generation

@@ -46,8 +46,8 @@ class FolderUpdate(BaseModel):
     description: str | None = None
     color: str | None = Field(None, pattern="^#[0-9A-Fa-f]{6}$")
     parent_id: UUID | None = None
-    tags: list[TagCreateData] = Field(
-        default_factory=list, description="Tags to create"
+    tags: list[TagCreateData] | None = Field(
+        None, description="Tags to associate with folder (None means no change)"
     )
 
 

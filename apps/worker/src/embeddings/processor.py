@@ -2,11 +2,12 @@
 
 import asyncio
 from typing import Any
+from uuid import UUID
 
 import numpy as np
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from shared.models import Document, DocumentChunk, DocumentStatus, Tag
-from sqlalchemy import delete, func, select, update
+from sqlalchemy import delete, select, update
 
 from ..common.config import get_settings
 from ..common.cpu_monitor import cpu_monitor
@@ -240,22 +241,49 @@ async def generate_document_embeddings(
                     )
                     db.add(chunk)
 
-                # Update document status to completed
+                # Keep document status as PROCESSING (summary generation is next)
                 await db.execute(
                     update(Document)
                     .where(Document.id == document_id)
-                    .values(status=DocumentStatus.COMPLETED, processed_at=func.now())
+                    .values(status=DocumentStatus.PROCESSING)
                 )
 
                 await db.commit()
                 logger.info("Embeddings stored successfully", document_id=document_id)
 
-            # 5. Report completion (backend will fetch document data)
-            logger.info("Reporting completion via Redis", document_id=document_id)
-            await reporter.report_completion(
-                "Embedding generation completed successfully"
+            # 5. Enqueue summary generation task
+            logger.info("Enqueuing summary generation", document_id=document_id)
+            
+            from arq import create_pool
+            from arq.connections import RedisSettings
+            redis_pool = await create_pool(RedisSettings.from_dsn(settings.redis_url))
+            
+            try:
+                job = await redis_pool.enqueue_job(
+                    "generate_document_summary",
+                    str(document_id),
+                    str(user_id),
+                    _job_id=f"summary:{document_id}",
+                    _defer_by=1,  # Start after 1 second
+                    _queue_name="doculearn:queue"
+                )
+                
+                logger.info(
+                    "Summary generation job enqueued",
+                    document_id=document_id,
+                    job_id=f"summary:{document_id}",
+                    job_result=job is not None
+                )
+            finally:
+                await redis_pool.close()
+            
+            # Report progress (not completion yet)
+            await reporter.report_progress(
+                ProgressStage.STORING,
+                0.70,
+                "Embeddings stored, summary generation queued"
             )
-            logger.info("Completion reported successfully", document_id=document_id)
+            logger.info("Summary generation queued", document_id=document_id)
             
             # Small delay to ensure message is sent before function returns
             await asyncio.sleep(0.1)
@@ -305,13 +333,13 @@ async def generate_document_embeddings(
             raise
 
 
-async def generate_tag_embeddings(ctx: dict, tag_names: list[str]) -> dict[str, Any]:
+async def generate_tag_embeddings(ctx: dict, tag_ids: list[str]) -> dict[str, Any]:
     """
-    Generate embeddings for tags.
+    Generate embeddings for tags by their IDs.
 
     Args:
         ctx: arq context
-        tag_names: List of tag names to generate embeddings for
+        tag_ids: List of tag IDs to generate embeddings for
 
     Returns:
         Processing results
@@ -324,32 +352,77 @@ async def generate_tag_embeddings(ctx: dict, tag_names: list[str]) -> dict[str, 
         results = []
 
         async with get_db_session() as db:
-            for tag_name in tag_names:
-                # Check if tag exists
-                result = await db.execute(select(Tag).where(Tag.name == tag_name))
-                tag = result.scalar_one_or_none()
+            # Fetch all tags in a single query
+            tag_uuids = [UUID(tag_id) for tag_id in tag_ids]
+            result = await db.execute(
+                select(Tag).where(Tag.id.in_(tag_uuids))
+            )
+            tags = result.scalars().all()
+            
+            # Create a mapping for quick lookup
+            tag_map = {str(tag.id): tag for tag in tags}
+            
+            # Process each tag
+            for tag_id in tag_ids:
+                try:
+                    tag = tag_map.get(tag_id)
+                    
+                    if not tag:
+                        logger.warning(f"Tag not found with ID: {tag_id}")
+                        results.append({
+                            "tag_id": tag_id,
+                            "error": "Tag not found"
+                        })
+                        continue
+                    
+                    # Skip if tag already has embedding
+                    if tag.embedding is not None:
+                        logger.info(f"Tag '{tag.name}' already has an embedding")
+                        results.append({
+                            "tag_id": tag_id,
+                            "tag_name": tag.name,
+                            "embedding_existed": True
+                        })
+                        continue
 
-                if not tag:
-                    # Create new tag
-                    tag = Tag(name=tag_name)
-                    db.add(tag)
-
-                # Generate embedding
-                embedding = await generate_embedding(tag_name, embeddings_model)
-                tag.embedding = np.array(embedding)
-
-                results.append({"tag": tag_name, "embedding_generated": True})
+                    # Generate embedding using tag name
+                    embedding = await generate_embedding(tag.name, embeddings_model)
+                    tag.embedding = np.array(embedding)
+                    
+                    logger.info(f"Generated embedding for tag '{tag.name}' (ID: {tag_id})")
+                    results.append({
+                        "tag_id": tag_id,
+                        "tag_name": tag.name,
+                        "embedding_generated": True
+                    })
+                    
+                except Exception as e:
+                    logger.error(
+                        f"Failed to generate embedding for tag ID {tag_id}: {e}"
+                    )
+                    results.append({
+                        "tag_id": tag_id,
+                        "error": str(e)
+                    })
 
             await db.commit()
 
-        logger.info("Tag embeddings generated", tags=tag_names, count=len(tag_names))
+        logger.info(
+            "Tag embeddings generation completed",
+            total_tags=len(tag_ids),
+            successful=len([r for r in results if r.get("embedding_generated")])
+        )
 
-        return {"success": True, "tags_processed": len(tag_names), "results": results}
+        return {
+            "success": True,
+            "tags_processed": len(tag_ids),
+            "results": results
+        }
 
     except Exception as e:
         logger.error(
             "Tag embedding generation failed",
-            tags=tag_names,
+            tag_ids=tag_ids,
             error=str(e),
             exc_info=True,
         )
@@ -365,17 +438,19 @@ async def update_all_tag_embeddings(ctx: dict) -> dict[str, Any]:
     """
     try:
         async with get_db_session() as db:
-            # Get all tag names
-            result = await db.execute(select(Tag.name))
-            tag_names = [row[0] for row in result]
+            # Get all tag IDs that don't have embeddings
+            result = await db.execute(
+                select(Tag.id).where(Tag.embedding.is_(None))
+            )
+            tag_ids = [str(row[0]) for row in result]
 
-        if not tag_names:
-            return {"success": True, "message": "No tags to update"}
+        if not tag_ids:
+            return {"success": True, "message": "All tags already have embeddings"}
 
         # Process tags
-        result = await generate_tag_embeddings(ctx, tag_names)
+        result = await generate_tag_embeddings(ctx, tag_ids)
 
-        return {"success": True, "total_tags": len(tag_names), **result}
+        return {"success": True, "total_tags": len(tag_ids), **result}
 
     except Exception as e:
         logger.error("Update all tag embeddings failed", error=str(e), exc_info=True)

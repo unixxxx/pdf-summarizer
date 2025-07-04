@@ -274,32 +274,44 @@ export class DocumentEffects {
         const rawProgress = event.progress; // 0-1 from backend
         
         // Map stages to overall progress ranges
-        // First task (process_document): 0-40%
-        // Second task (generate_document_embeddings): 40-100%
+        // First task (process_document): 0-30%
+        // Second task (generate_document_embeddings): 30-70%
+        // Third task (generate_document_summary): 70-100%
         switch (event.stage) {
           case 'downloading':
-            if (event.message?.includes('embedding generation')) {
+            if (event.message?.includes('summary generation')) {
+              // In summary phase
+              overallProgress = 70 + Math.round(rawProgress * 5); // 70-75%
+            } else if (event.message?.includes('embedding generation')) {
               // In embedding phase
-              overallProgress = 40 + Math.round(rawProgress * 10); // 40-50%
+              overallProgress = 30 + Math.round(rawProgress * 5); // 30-35%
             } else {
               // In text extraction phase
-              overallProgress = Math.round(rawProgress * 20); // 0-20%
+              overallProgress = Math.round(rawProgress * 15); // 0-15%
             }
             break;
           case 'extracting':
-            overallProgress = 20 + Math.round(rawProgress * 20); // 20-40%
+            if (event.message?.includes('summary') || event.message?.includes('language model')) {
+              // Summary generation
+              overallProgress = 75 + Math.round(rawProgress * 15); // 75-90%
+            } else {
+              // Text extraction
+              overallProgress = 15 + Math.round(rawProgress * 15); // 15-30%
+            }
             break;
           case 'chunking':
-            overallProgress = 40 + Math.round(rawProgress * 10); // 40-50%
+            overallProgress = 35 + Math.round(rawProgress * 5); // 35-40%
             break;
           case 'embedding':
-            overallProgress = 50 + Math.round(rawProgress * 40); // 50-90%
+            overallProgress = 40 + Math.round(rawProgress * 25); // 40-65%
             break;
           case 'storing':
-            if (event.message?.includes('embedding')) {
+            if (event.message?.includes('summary')) {
               overallProgress = 90 + Math.round(rawProgress * 10); // 90-100%
+            } else if (event.message?.includes('embedding')) {
+              overallProgress = 65 + Math.round(rawProgress * 5); // 65-70%
             } else {
-              overallProgress = 35 + Math.round(rawProgress * 5); // 35-40%
+              overallProgress = 25 + Math.round(rawProgress * 5); // 25-30%
             }
             break;
           case 'completed':

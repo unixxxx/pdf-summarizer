@@ -104,8 +104,6 @@ async def remove_documents_from_folder(
     )
 
 
-
-
 @router.post("/{folder_id}/move", response_model=FolderResponse)
 async def move_folder(
     folder_id: UUID,

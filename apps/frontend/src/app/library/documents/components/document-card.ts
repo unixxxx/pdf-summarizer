@@ -127,8 +127,6 @@ import { FormatFileSizePipe } from '../../../core/pipes/formatFileSize';
       @if (item().tags && item().tags.length > 0) {
       <app-tag-list
         [tags]="item().tags"
-        [variant]="'small'"
-        [clickable]="false"
         [gapSize]="'small'"
       />
       }
@@ -170,7 +168,11 @@ import { FormatFileSizePipe } from '../../../core/pipes/formatFileSize';
             </svg>
           </div>
           <span class="relative">
-            {{ processingProgress() > 0 ? processingProgress() + '%' : 'Processing' }}
+            {{
+              processingProgress() > 0
+                ? processingProgress() + '%'
+                : 'Processing'
+            }}
             <!-- Tooltip on hover -->
             <div
               class="absolute bottom-6 right-0 bg-popover border border-border rounded-md p-2 shadow-lg opacity-0 group-hover/status:opacity-100 transition-opacity pointer-events-none z-20 min-w-[200px]"
@@ -274,7 +276,7 @@ export class DocumentCard {
     // Circumference of circle with radius 6 is ~37.7
     const circumference = 37.7;
     const progress = this.processingProgress() / 100;
-    return circumference - (circumference * progress);
+    return circumference - circumference * progress;
   });
 
   // Processing stage text
@@ -285,14 +287,18 @@ export class DocumentCard {
     // Simplified messages based on progress ranges
     if (progress === 0) {
       return 'Starting document processing...';
-    } else if (progress < 20) {
+    } else if (progress < 15) {
       return 'Reading document...';
-    } else if (progress < 40) {
+    } else if (progress < 30) {
       return 'Extracting text content...';
-    } else if (progress < 50) {
+    } else if (progress < 40) {
       return 'Preparing for analysis...';
+    } else if (progress < 65) {
+      return 'Generating embeddings...';
+    } else if (progress < 75) {
+      return 'Preparing analysis...';
     } else if (progress < 90) {
-      return 'Analyzing document content...';
+      return 'Generating summary and tags...';
     } else if (progress < 100) {
       return 'Finalizing processing...';
     }

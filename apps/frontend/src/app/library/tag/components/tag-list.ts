@@ -2,7 +2,6 @@ import {
   Component,
   ChangeDetectionStrategy,
   input,
-  output,
   computed,
 } from '@angular/core';
 
@@ -17,13 +16,7 @@ import { Tag as TagModel } from '../store/state/tag';
   template: `
     <div class="flex flex-wrap" [class]="gapClass()">
       @for (tag of tags(); track tag.id) {
-      <app-tag
-        [tag]="tag"
-        [variant]="variant()"
-        [clickable]="clickable()"
-        (tagClick)="onTagClick($event)"
-      >
-      </app-tag>
+      <app-tag [tag]="tag"></app-tag>
       }
     </div>
   `,
@@ -31,12 +24,7 @@ import { Tag as TagModel } from '../store/state/tag';
 export class TagList {
   // Input signals
   tags = input<TagModel[]>([]);
-  variant = input<'default' | 'filter' | 'small'>('default');
-  clickable = input(false);
   gapSize = input<'small' | 'medium' | 'large'>('medium');
-
-  // Output signals
-  tagClick = output<TagModel>();
 
   // Computed properties
   gapClass = computed(() => {
@@ -47,8 +35,4 @@ export class TagList {
     };
     return gapClasses[this.gapSize()];
   });
-
-  onTagClick(tag: TagModel) {
-    this.tagClick.emit(tag);
-  }
 }

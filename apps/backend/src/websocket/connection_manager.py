@@ -272,7 +272,10 @@ class ConnectionManager:
             async with async_session() as session:
                 result = await session.execute(
                     select(Document)
-                    .options(selectinload(Document.tags))
+                    .options(
+                        selectinload(Document.tags),
+                        selectinload(Document.summaries)
+                    )
                     .where(Document.id == UUID(document_id))
                 )
                 document = result.scalar_one_or_none()
@@ -281,17 +284,22 @@ class ConnectionManager:
                     logger.error(f"Document {document_id} not found in database")
                     return None
                 
+                # Get the latest summary if available
+                summary_text = ""
+                if document.summaries:
+                    # Get the most recent summary
+                    latest_summary = max(document.summaries, key=lambda s: s.created_at)
+                    summary_text = latest_summary.summary_text[:200] + "..."
+                elif document.extracted_text:
+                    summary_text = document.extracted_text[:200] + "..."
+                
                 # Convert to DocumentListItemResponse
                 return DocumentListItemResponse(
                     id=document.id,
                     document_id=document.id,
                     filename=document.filename,
                     file_size=document.file_size,
-                    summary=(
-                        document.extracted_text[:200] + "..."
-                        if document.extracted_text
-                        else ""
-                    ),
+                    summary=summary_text,
                     created_at=document.created_at,
                     word_count=document.word_count or 0,
                     tags=[
