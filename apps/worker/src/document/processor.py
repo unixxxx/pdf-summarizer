@@ -13,8 +13,9 @@ from ..common.config import get_settings
 from ..common.cpu_monitor import cpu_monitor
 from ..common.database import get_db_session
 from ..common.logger import logger
+from ..common.progress_calculator import ProcessingStages
 from ..common.redis_progress_reporter import ProgressStage
-from ..common.redis_progress_reporter import RedisProgressReporter as ProgressReporter
+from ..common.staged_progress_reporter import StagedProgressReporter as ProgressReporter
 
 settings = get_settings()
 
@@ -116,7 +117,8 @@ async def process_document(ctx: dict, document_id: str, user_id: str) -> dict[st
         redis=redis,
         job_id=job_id,
         document_id=document_id,
-        user_id=user_id
+        user_id=user_id,
+        current_stage=ProcessingStages.TEXT_EXTRACTION
     ) as reporter:
         
         try:

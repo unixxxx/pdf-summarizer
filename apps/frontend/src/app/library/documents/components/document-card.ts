@@ -161,7 +161,7 @@ import { FormatFileSizePipe } from '../../../core/pipes/formatFileSize';
                 stroke="currentColor"
                 stroke-width="2"
                 fill="none"
-                class="text-primary transition-all duration-300 ease-out"
+                [class]="progressColorClass()"
                 stroke-dasharray="37.7"
                 [style.stroke-dashoffset]="strokeDashOffset()"
               />
@@ -277,6 +277,19 @@ export class DocumentCard {
     const circumference = 37.7;
     const progress = this.processingProgress() / 100;
     return circumference - circumference * progress;
+  });
+
+  // Progress color class based on progress percentage
+  progressColorClass = computed(() => {
+    const progress = this.processingProgress();
+    
+    if (progress < 30) {
+      return 'text-yellow-500 transition-all duration-300 ease-out';
+    } else if (progress < 70) {
+      return 'text-blue-500 transition-all duration-300 ease-out';
+    } else {
+      return 'text-green-500 transition-all duration-300 ease-out';
+    }
   });
 
   // Processing stage text

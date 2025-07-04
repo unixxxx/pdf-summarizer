@@ -11,8 +11,12 @@ from ..common.config import get_settings
 from ..common.database import get_db_session
 from ..common.llm_factory import UnifiedLLMFactory
 from ..common.logger import logger
-from ..common.redis_progress_reporter import ProgressStage, RedisProgressReporter
+from ..common.progress_calculator import ProcessingStages
+from ..common.redis_progress_reporter import ProgressStage
 from ..common.retry import retry_on_llm_error
+from ..common.staged_progress_reporter import (
+    StagedProgressReporter as RedisProgressReporter,
+)
 from .llm_schemas import ComprehensiveDocumentAnalysis
 
 settings = get_settings()
@@ -96,7 +100,11 @@ async def generate_document_summary(
     redis = ctx.get("redis")
     
     async with RedisProgressReporter(
-        redis=redis, job_id=job_id, document_id=document_id, user_id=user_id
+        redis=redis, 
+        job_id=job_id, 
+        document_id=document_id, 
+        user_id=user_id,
+        current_stage=ProcessingStages.SUMMARY_GENERATION
     ) as reporter:
         
         try:
@@ -163,7 +171,7 @@ Provide a JSON response with:
 Tag requirements:
 - Each tag must be at least 2 characters long
 - Use lowercase letters only
-- Use hyphens for multi-word tags (e.g., "machine-learning")
+- Use spaces for multi-word tags (e.g., "machine learning")
 - Be specific and descriptive (avoid single letters or numbers)
 - Focus on the document's main topics, technologies, or concepts
 
@@ -177,7 +185,7 @@ Example format:
 {{
     "summary": "A comprehensive summary of the document...",
     "title": "Document Title",
-    "tags": ["machine-learning", "python", "neural-networks", "tutorial", "deep-learning"]
+    "tags": ["machine learning", "python", "neural networks", "tutorial", "deep learning"]
 }}"""
             )
             

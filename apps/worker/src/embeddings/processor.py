@@ -14,13 +14,10 @@ from ..common.cpu_monitor import cpu_monitor
 from ..common.database import get_db_session
 from ..common.llm_factory import UnifiedLLMFactory
 from ..common.logger import logger
-from ..common.redis_progress_reporter import (
-    ProgressStage,
-)
-from ..common.redis_progress_reporter import (
-    RedisProgressReporter as ProgressReporter,
-)
+from ..common.progress_calculator import ProcessingStages
+from ..common.redis_progress_reporter import ProgressStage
 from ..common.retry import retry_on_llm_error
+from ..common.staged_progress_reporter import StagedProgressReporter as ProgressReporter
 
 settings = get_settings()
 
@@ -107,7 +104,11 @@ async def generate_document_embeddings(
     redis = ctx.get("redis")
 
     async with ProgressReporter(
-        redis=redis, job_id=job_id, document_id=document_id, user_id=user_id
+        redis=redis, 
+        job_id=job_id, 
+        document_id=document_id, 
+        user_id=user_id,
+        current_stage=ProcessingStages.EMBEDDING_GENERATION
     ) as reporter:
 
         try:
