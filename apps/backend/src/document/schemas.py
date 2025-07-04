@@ -5,8 +5,8 @@ from enum import Enum
 from uuid import UUID
 
 from pydantic import BaseModel, Field
-
 from shared.models import DocumentStatus
+
 from ..tag.schemas import TagResponse
 
 
@@ -31,6 +31,7 @@ class DocumentDetailResponse(BaseModel):
     extracted_text: str | None = None
     word_count: int | None = None
     folder_id: UUID | None = None
+    error_message: str | None = None  # Error message if processing failed
     tags: list[TagResponse] = []
 
     class Config:
@@ -52,6 +53,7 @@ class DocumentListItemResponse(BaseModel):
     tags: list[TagResponse]
     status: DocumentStatus  # Document processing status
     folder_id: UUID | None = None
+    error_message: str | None = None  # Error message if processing failed
 
     class Config:
         from_attributes = True

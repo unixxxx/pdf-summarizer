@@ -1,20 +1,20 @@
 """Document processing tasks for arq worker."""
 
-import aiofiles
-from pathlib import Path
-from typing import Dict, Any
-import PyPDF2
-import io
-import aioboto3
 import asyncio
+import io
+from typing import Any
 
-from ..common.database import get_db_session
+import aioboto3
+import PyPDF2
 from shared.models import Document, DocumentStatus
-from ..common.logger import logger
-from ..common.redis_progress_reporter import RedisProgressReporter as ProgressReporter, ProgressStage
+from sqlalchemy import select
+
 from ..common.config import get_settings
 from ..common.cpu_monitor import cpu_monitor
-from sqlalchemy import select
+from ..common.database import get_db_session
+from ..common.logger import logger
+from ..common.redis_progress_reporter import ProgressStage
+from ..common.redis_progress_reporter import RedisProgressReporter as ProgressReporter
 
 settings = get_settings()
 
@@ -95,7 +95,7 @@ async def download_file(storage_path: str) -> bytes:
         raise FileNotFoundError(f"File not found: {storage_path}")
 
 
-async def process_document(ctx: dict, document_id: str, user_id: str) -> Dict[str, Any]:
+async def process_document(ctx: dict, document_id: str, user_id: str) -> dict[str, Any]:
     """
     Main document processing task.
     
@@ -231,8 +231,8 @@ async def process_document(ctx: dict, document_id: str, user_id: str) -> Dict[st
                 await db.commit()
             
             await reporter.report_progress(
-                ProgressStage.COMPLETED, 
-                1.0, 
+                ProgressStage.STORING, 
+                0.40, 
                 "Text extraction completed, embedding generation queued"
             )
             

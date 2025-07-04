@@ -1,6 +1,5 @@
 """Async summarization router."""
 
-from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -9,7 +8,7 @@ from ..auth.dependencies import CurrentUserDep
 from ..common.exceptions import BadRequestException, NotFoundException
 from ..database.session import get_db
 from ..document.dependencies import DocumentServiceDep
-from .async_service import AsyncSummarizationService
+from .dependencies import AsyncSummarizationServiceDep
 from .schemas import CreateSummaryRequest
 
 router = APIRouter(
@@ -32,6 +31,7 @@ async def create_summary_async(
     request: CreateSummaryRequest,
     current_user: CurrentUserDep,
     document_service: DocumentServiceDep,
+    service: AsyncSummarizationServiceDep,
     db: AsyncSession = Depends(get_db),
 ) -> dict:
     """Queue summarization for a document or text."""
@@ -47,8 +47,6 @@ async def create_summary_async(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Filename is required when providing raw text",
         )
-    
-    service = AsyncSummarizationService()
     
     try:
         # Get summary options from request
@@ -100,10 +98,10 @@ async def create_summary_async(
 async def get_summarization_job_status(
     job_id: str,
     current_user: CurrentUserDep,
+    service: AsyncSummarizationServiceDep,
 ) -> dict:
     """Get the status of a summarization job."""
     try:
-        service = AsyncSummarizationService()
         result = await service.get_summarization_status(job_id)
         
         # TODO: Add security check to ensure user owns the document/summary

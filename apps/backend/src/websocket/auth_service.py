@@ -1,7 +1,6 @@
 """WebSocket authentication service."""
 
 import logging
-from typing import Optional
 
 from fastapi import WebSocket, status
 from fastapi.exceptions import WebSocketException
@@ -17,7 +16,7 @@ logger = logging.getLogger(__name__)
 class WebSocketAuthService:
     """Service for handling WebSocket authentication."""
 
-    def __init__(self, settings: Optional[Settings] = None):
+    def __init__(self, settings: Settings | None = None):
         """Initialize the WebSocket authentication service.
         
         Args:
@@ -68,7 +67,7 @@ class WebSocketAuthService:
             logger.error(f"WebSocket authentication error: {e}")
             await self._close_with_internal_error(websocket)
 
-    def _extract_token_from_query(self, websocket: WebSocket) -> Optional[str]:
+    def _extract_token_from_query(self, websocket: WebSocket) -> str | None:
         """Extract authentication token from WebSocket query parameters.
         
         Args:

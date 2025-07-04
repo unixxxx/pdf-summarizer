@@ -1,6 +1,6 @@
 """Retry logic and circuit breaker patterns for external services."""
 
-from typing import Callable
+from collections.abc import Callable
 
 from tenacity import (
     retry,

@@ -4,22 +4,24 @@ import logging
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, status
 from fastapi.exceptions import WebSocketException
+from pydantic import ValidationError
 
-from .auth_service import WebSocketAuthService
 from .connection_manager import manager
+from .schemas import PingMessage, PongMessage, WebSocketMessageType
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
-
-# Initialize auth service
-auth_service = WebSocketAuthService()
 
 
 @router.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     """Main WebSocket endpoint."""
+    from ..config import get_settings
+    from .auth_service import WebSocketAuthService
+    
     user = None
     user_id = None
+    auth_service = WebSocketAuthService(get_settings())
     
     try:
         # Authenticate user
@@ -35,12 +37,17 @@ async def websocket_endpoint(websocket: WebSocket):
             data = await websocket.receive_json()
             
             # Handle different message types
-            if data.get("type") == "ping":
+            msg_type = data.get("type")
+            
+            if msg_type == WebSocketMessageType.PING:
                 # Respond to ping with pong
-                await websocket.send_json({
-                    "type": "pong",
-                    "timestamp": data.get("timestamp")
-                })
+                try:
+                    # Validate ping message format
+                    PingMessage.model_validate(data)
+                    pong_msg = PongMessage()
+                    await websocket.send_json(pong_msg.model_dump(mode="json"))
+                except ValidationError:
+                    logger.warning("Invalid ping message format")
             elif data.get("type") == "subscribe":
                 # Handle subscription requests
                 document_id = data.get("document_id")

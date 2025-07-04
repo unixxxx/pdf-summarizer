@@ -137,3 +137,39 @@ async def export_document(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Document not found",
         )
+
+
+@router.post(
+    "/{document_id}/retry",
+    status_code=status.HTTP_202_ACCEPTED,
+    summary="Retry failed document processing",
+    description="Retry processing for a failed document",
+    responses={
+        202: {"description": "Processing retry queued successfully"},
+        400: {"description": "Document is not in failed state"},
+        404: {"description": "Document not found"},
+    },
+)
+async def retry_document_processing(
+    document_id: UUID,
+    current_user: CurrentUserDep,
+    document_service: DocumentServiceDep,
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """Retry processing for a failed document."""
+    try:
+        return await document_service.retry_document_processing(
+            document_id=document_id,
+            user_id=current_user.id,
+            db=db,
+        )
+    except NotFoundException:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Document not found",
+        )
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e),
+        )

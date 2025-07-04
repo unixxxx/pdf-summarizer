@@ -163,41 +163,68 @@ import { FormatFileSizePipe } from '../../../core/pipes/formatFileSize';
                 stroke="currentColor"
                 stroke-width="2"
                 fill="none"
-                class="text-primary"
-                [style.stroke-dasharray]="'37.7 37.7'"
-                [style.stroke-dashoffset]="37.7"
-                style="transition: stroke-dashoffset 0.3s ease"
+                class="text-primary transition-all duration-300 ease-out"
+                stroke-dasharray="37.7"
+                [style.stroke-dashoffset]="strokeDashOffset()"
               />
             </svg>
           </div>
           <span class="relative">
-            Processing
+            {{ processingProgress() > 0 ? processingProgress() + '%' : 'Processing' }}
             <!-- Tooltip on hover -->
             <div
-              class="absolute bottom-6 right-0 bg-popover border border-border rounded-md p-2 shadow-lg opacity-0 group-hover/status:opacity-100 transition-opacity pointer-events-none z-20 min-w-[150px]"
+              class="absolute bottom-6 right-0 bg-popover border border-border rounded-md p-2 shadow-lg opacity-0 group-hover/status:opacity-100 transition-opacity pointer-events-none z-20 min-w-[200px]"
             >
               <p class="text-xs font-medium text-foreground">
                 {{ processingStageText() }}
               </p>
+              @if (processingProgress() > 0) {
+              <div class="mt-1">
+                <div class="w-full bg-primary/20 rounded-full h-1">
+                  <div
+                    class="bg-primary h-1 rounded-full transition-all duration-300"
+                    [style.width.%]="processingProgress()"
+                  ></div>
+                </div>
+              </div>
+              }
             </div>
           </span>
         </div>
         } @else if (isFailed()) {
-        <div class="flex items-center gap-1 text-error">
-          <svg
-            class="w-4 h-4"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
+        <div class="flex items-center gap-1 text-error group/status">
+          <button
+            (click)="onRetry($event)"
+            class="flex items-center gap-1 hover:underline"
+            title="Retry processing"
           >
-            <path
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              stroke-width="2"
-              d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-            />
-          </svg>
-          <span>Failed</span>
+            <svg
+              class="w-4 h-4"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+              />
+            </svg>
+            <span class="relative">
+              Retry
+              <!-- Error tooltip on hover -->
+              @if (item().errorMessage) {
+              <div
+                class="absolute bottom-6 right-0 bg-popover border border-border rounded-md p-2 shadow-lg opacity-0 group-hover/status:opacity-100 transition-opacity pointer-events-none z-20 min-w-[200px] max-w-[300px]"
+              >
+                <p class="text-xs font-medium text-error">
+                  {{ item().errorMessage }}
+                </p>
+              </div>
+              }
+            </span>
+          </button>
         </div>
         }
       </div>
@@ -216,6 +243,7 @@ export class DocumentCard {
     item: DocumentListItem;
     format: 'pdf' | 'markdown' | 'text';
   }>();
+  retry = output<DocumentListItem>();
   startDrag = output<DocumentListItem>();
   endDrag = output<void>();
 
@@ -235,10 +263,41 @@ export class DocumentCard {
   // Check if document failed
   isFailed = computed(() => this.item().status === DocumentStatus.FAILED);
 
+  // Processing progress (0-100)
+  processingProgress = computed(() => {
+    const item = this.item();
+    return item.processingProgress || 0;
+  });
+
+  // Calculate stroke dash offset for circular progress
+  strokeDashOffset = computed(() => {
+    // Circumference of circle with radius 6 is ~37.7
+    const circumference = 37.7;
+    const progress = this.processingProgress() / 100;
+    return circumference - (circumference * progress);
+  });
+
   // Processing stage text
   processingStageText = computed(() => {
     const item = this.item();
+    const progress = this.processingProgress();
 
+    // Simplified messages based on progress ranges
+    if (progress === 0) {
+      return 'Starting document processing...';
+    } else if (progress < 20) {
+      return 'Reading document...';
+    } else if (progress < 40) {
+      return 'Extracting text content...';
+    } else if (progress < 50) {
+      return 'Preparing for analysis...';
+    } else if (progress < 90) {
+      return 'Analyzing document content...';
+    } else if (progress < 100) {
+      return 'Finalizing processing...';
+    }
+
+    // Fallback to status-based messages
     switch (item.status) {
       case DocumentStatus.UPLOADING:
         return 'Uploading document...';
@@ -280,5 +339,10 @@ export class DocumentCard {
     event.stopPropagation();
     this.showExportMenu.set(false);
     this.export.emit({ item: this.item(), format });
+  }
+
+  onRetry(event: Event) {
+    event.stopPropagation();
+    this.retry.emit(this.item());
   }
 }

@@ -5,10 +5,10 @@ import re
 from typing import Any
 from uuid import UUID
 
+from shared.models import Tag, document_tags
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from shared.models import Tag, document_tags
 # Embeddings service moved to worker - will be refactored
 from .schemas import TagResponse
 

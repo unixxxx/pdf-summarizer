@@ -1,8 +1,10 @@
 """Logger configuration for the worker."""
 
-import structlog
 import logging
 import sys
+
+import structlog
+
 from .config import get_settings
 
 settings = get_settings()

@@ -1,8 +1,9 @@
 """Worker configuration settings."""
 
-from pydantic_settings import BaseSettings
-from pydantic import Field
 from functools import lru_cache
+
+from pydantic import Field
+from pydantic_settings import BaseSettings
 
 
 class WorkerSettings(BaseSettings):
@@ -60,7 +61,7 @@ class WorkerSettings(BaseSettings):
         case_sensitive = False
 
 
-@lru_cache()
+@lru_cache
 def get_settings() -> WorkerSettings:
     """Get cached worker settings."""
     return WorkerSettings()

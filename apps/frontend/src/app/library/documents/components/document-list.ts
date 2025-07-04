@@ -117,6 +117,7 @@ import { FolderActions } from '../../folder/store/folder.actions';
               (view)="viewDocument($event)"
               (delete)="deleteDocument($event)"
               (export)="exportDocument($event)"
+              (retry)="retryDocument($event)"
               (startDrag)="onDocumentDragStart(item)"
               (endDrag)="onDocumentDragEnd()"
             />
@@ -186,6 +187,14 @@ export class DocumentList {
         documentId: event.item.documentId,
         format: event.format,
         filename: event.item.filename.replace(/\.[^/.]+$/, ''),
+      })
+    );
+  }
+
+  retryDocument(item: DocumentListItem) {
+    this.store.dispatch(
+      DocumentActions.retryDocumentProcessingCommand({
+        documentId: item.documentId,
       })
     );
   }

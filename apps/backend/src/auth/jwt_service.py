@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from fastapi import HTTPException, status
@@ -30,9 +30,9 @@ class JWTService:
         to_encode = data.copy()
 
         # Set expiration
-        expire = datetime.now(timezone.utc) + timedelta(hours=self.expiration_hours)
+        expire = datetime.now(UTC) + timedelta(hours=self.expiration_hours)
         to_encode.update(
-            {"exp": expire, "iat": datetime.now(timezone.utc), "type": "access"}
+            {"exp": expire, "iat": datetime.now(UTC), "type": "access"}
         )
 
         # Create the token

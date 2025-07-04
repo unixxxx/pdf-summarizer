@@ -1,17 +1,18 @@
 """Quiz generation tasks for the worker."""
 
-from typing import Dict, Any, List
 from datetime import datetime
-from uuid import uuid4
 from enum import Enum
+from typing import Any
+from uuid import uuid4
+
 from pydantic import BaseModel, Field
+from shared.models import Document
 from sqlalchemy import select
 
-from ..common.database import get_db_session
-from shared.models import Document
-from ..common.logger import logger
 from ..common.config import get_settings
+from ..common.database import get_db_session
 from ..common.llm_factory import UnifiedLLMFactory
+from ..common.logger import logger
 from ..common.retry import retry_on_llm_error
 
 settings = get_settings()
@@ -38,16 +39,16 @@ class QuizQuestion(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid4()))
     question: str
     type: QuizQuestionType
-    options: List[str] | None = None
+    options: list[str] | None = None
     correct_answer: str
     explanation: str
     difficulty: QuizDifficulty | None = None
-    tags: List[str] = Field(default_factory=list)
+    tags: list[str] = Field(default_factory=list)
 
 
 class QuestionGeneration(BaseModel):
     """Structured output for quiz generation."""
-    questions: List[QuizQuestion]
+    questions: list[QuizQuestion]
 
 
 async def generate_quiz(
@@ -55,10 +56,10 @@ async def generate_quiz(
     document_id: str, 
     user_id: str,
     num_questions: int = 10,
-    question_types: List[str] | None = None,
+    question_types: list[str] | None = None,
     difficulty: str = "medium",
-    focus_areas: List[str] | None = None
-) -> Dict[str, Any]:
+    focus_areas: list[str] | None = None
+) -> dict[str, Any]:
     """
     Generate quiz questions from a document.
     

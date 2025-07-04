@@ -13,6 +13,11 @@ export type DocumentListItem = Omit<
   'tags'
 > & {
   tags: Tag[];
+  // Real-time processing status fields (from WebSocket updates)
+  processingStage?: string;
+  processingProgress?: number;
+  processingMessage?: string;
+  errorMessage?: string;  // Error message when processing fails
 };
 
 /**
@@ -47,6 +52,7 @@ export const toDocumentListItem = (
   tags: dto.tags.map(toTag),
   status: dto.status,
   folderId: dto.folder_id,
+  errorMessage: dto.error_message || undefined,
 });
 
 /**

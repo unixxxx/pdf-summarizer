@@ -1,15 +1,16 @@
 """Async chat service that delegates to worker."""
 
 import logging
+from datetime import UTC
 from uuid import UUID
 
 from arq import create_pool
+from shared.models import Chat, ChatMessage, Document
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..common.exceptions import NotFoundException
 from ..config import get_settings
-from shared.models import Chat, ChatMessage, Document
 
 logger = logging.getLogger(__name__)
 
@@ -42,8 +43,8 @@ class AsyncChatService:
         
         # Only return if it's a recent chat (within last 24 hours)
         if chat:
-            from datetime import datetime, timedelta, timezone
-            if chat.updated_at and chat.updated_at.replace(tzinfo=timezone.utc) > datetime.now(timezone.utc) - timedelta(hours=24):
+            from datetime import datetime, timedelta
+            if chat.updated_at and chat.updated_at.replace(tzinfo=UTC) > datetime.now(UTC) - timedelta(hours=24):
                 return chat
         
         return None

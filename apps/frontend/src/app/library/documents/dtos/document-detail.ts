@@ -15,4 +15,5 @@ export interface DocumentDetailDto {
   extracted_text?: string;
   word_count?: number;
   folder_id?: string;
+  error_message?: string | null;
 }

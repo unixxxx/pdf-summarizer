@@ -3,22 +3,21 @@
 from arq import cron
 from arq.connections import RedisSettings
 
+from src.chat.processor import process_chat_message
 from src.common.config import get_settings
-from src.common.logger import logger
-from src.common.database import init_db, close_db
 from src.common.cpu_monitor import cpu_monitor
+from src.common.database import close_db, init_db
+from src.common.logger import logger
 from src.document.processor import process_document
 from src.embeddings.processor import (
     generate_document_embeddings,
     generate_tag_embeddings,
-    update_all_tag_embeddings
+    update_all_tag_embeddings,
 )
-from src.summarization.processor import summarize_text
-from src.quiz.processor import generate_quiz
 from src.flashcard.processor import generate_flashcards
 from src.maintenance.tasks import cleanup_orphaned_files
-from src.chat.processor import process_chat_message
-
+from src.quiz.processor import generate_quiz
+from src.summarization.processor import summarize_text
 
 settings = get_settings()
 

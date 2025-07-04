@@ -10,12 +10,12 @@ import aioboto3
 import aiofiles
 import aiofiles.os
 from botocore.exceptions import ClientError
+from shared.models import Document
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..common.exceptions import StorageError
 from ..config import Settings
-from shared.models import Document
 
 logger = logging.getLogger(__name__)
 

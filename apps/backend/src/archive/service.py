@@ -4,12 +4,12 @@ import contextlib
 import logging
 from uuid import UUID
 
+from shared.models import Document, Folder, User
 from sqlalchemy import and_, delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from ..common.exceptions import NotFoundException
-from shared.models import Document, Folder, User
 from ..storage.service import StorageService
 from .schemas import (
     ArchivedDocument,

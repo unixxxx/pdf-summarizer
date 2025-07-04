@@ -6,11 +6,11 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..auth.dependencies import CurrentUserDep
-from ..common.exceptions import NotFoundException, BadRequestException
+from ..common.exceptions import BadRequestException, NotFoundException
 from ..database.session import get_db
 from ..document.dependencies import DocumentServiceDep
+from .dependencies import AsyncFlashcardServiceDep
 from .schemas import FlashcardOptions
-from .async_service import AsyncFlashcardService
 
 router = APIRouter(
     prefix="/flashcard",
@@ -33,13 +33,11 @@ async def generate_flashcards_async(
     options: FlashcardOptions,
     current_user: CurrentUserDep,
     document_service: DocumentServiceDep,
+    flashcard_service: AsyncFlashcardServiceDep,
     db: AsyncSession = Depends(get_db),
 ) -> dict:
     """Queue flashcard generation for a document."""
     try:
-        # Create async flashcard service
-        flashcard_service = AsyncFlashcardService()
-        
         # Enqueue flashcard generation
         result = await flashcard_service.enqueue_flashcard_generation(
             document_id=document_id,
@@ -76,10 +74,10 @@ async def generate_flashcards_async(
 async def get_flashcard_job_status(
     job_id: str,
     current_user: CurrentUserDep,
+    flashcard_service: AsyncFlashcardServiceDep,
 ) -> dict:
     """Get the status of a flashcard generation job."""
     try:
-        flashcard_service = AsyncFlashcardService()
         result = await flashcard_service.get_flashcard_status(job_id)
         
         # TODO: Add security check to ensure user owns the document/flashcards

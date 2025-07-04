@@ -16,4 +16,5 @@ export interface DocumentListItemDto {
   tags: TagDto[];
   status: DocumentStatus;
   folder_id?: string;
+  error_message?: string | null; // Error message if processing failed
 }

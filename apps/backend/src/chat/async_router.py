@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..auth.dependencies import CurrentUserDep
 from ..database.session import get_db
-from .async_service import AsyncChatService
+from .dependencies import AsyncChatServiceDep
 from .schemas import (
     ChatMessageRequest,
     ChatMessageResponse,
@@ -36,11 +36,10 @@ async def create_or_get_chat_session(
     document_id: UUID,
     session_data: CreateChatRequest,
     current_user: CurrentUserDep,
+    service: AsyncChatServiceDep,
     db: AsyncSession = Depends(get_db),
 ) -> ChatResponse:
     """Create or get chat session for a document."""
-    service = AsyncChatService()
-    
     # Check for existing active session
     existing_chat = await service.find_active_chat_for_document(
         user_id=current_user.id,
@@ -83,10 +82,10 @@ async def create_or_get_chat_session(
 async def get_chat_messages(
     chat_id: UUID,
     current_user: CurrentUserDep,
+    service: AsyncChatServiceDep,
     db: AsyncSession = Depends(get_db),
 ) -> list[ChatMessageResponse]:
     """Get all messages in a chat session."""
-    service = AsyncChatService()
     
     messages = await service.get_chat_messages(
         chat_id=chat_id,
@@ -117,10 +116,10 @@ async def send_message(
     chat_id: UUID,
     message_data: ChatMessageRequest,
     current_user: CurrentUserDep,
+    service: AsyncChatServiceDep,
     db: AsyncSession = Depends(get_db),
 ) -> dict:
     """Send a message and queue AI response generation."""
-    service = AsyncChatService()
     
     try:
         result = await service.enqueue_message(
@@ -151,10 +150,10 @@ async def send_message(
 async def delete_chat_session(
     chat_id: UUID,
     current_user: CurrentUserDep,
+    service: AsyncChatServiceDep,
     db: AsyncSession = Depends(get_db),
 ) -> None:
     """Delete a chat session."""
-    service = AsyncChatService()
     
     await service.delete_chat(
         chat_id=chat_id,

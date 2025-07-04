@@ -4,10 +4,10 @@ import logging
 from typing import Any
 from uuid import UUID
 
+from shared.models import Tag
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..common.cache_service import CacheService
-from shared.models import Tag
 from .schemas import TagResponse
 from .service import TagService
 

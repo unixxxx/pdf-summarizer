@@ -18,6 +18,8 @@ import { documentFeature } from './document.feature';
 import { UIStore } from '../../../shared/ui.store';
 import { ModalService } from '../../../core/services/modal';
 import { ConfirmDialog } from '../../../shared/components/confirm-dialog';
+import { WebSocketService } from '../../../core/services/websocket.service';
+import { DocumentProcessingEvent } from '../dtos/websocket-events';
 
 @Injectable()
 export class DocumentEffects {
@@ -26,6 +28,7 @@ export class DocumentEffects {
   private documentService = inject(DocumentService);
   private uiStore = inject(UIStore);
   private modalService = inject(ModalService);
+  private webSocketService = inject(WebSocketService);
 
   loadDocuments$ = createEffect(() =>
     this.actions$.pipe(
@@ -223,6 +226,116 @@ export class DocumentEffects {
             )
           )
         );
+      })
+    )
+  );
+
+  // Retry document processing
+  retryDocumentProcessing$ = createEffect(() =>
+    this.actions$.pipe(
+      ofType(DocumentActions.retryDocumentProcessingCommand),
+      switchMap(({ documentId }) =>
+        this.documentService.retryProcessing(documentId).pipe(
+          map((response) => {
+            this.uiStore.showSuccess('Document processing retry queued');
+            return DocumentActions.retryDocumentProcessingSuccessEvent({
+              documentId,
+              jobId: response.job_id,
+            });
+          }),
+          catchError((error) => {
+            this.uiStore.showError(error.message || 'Failed to retry processing');
+            return of(
+              DocumentActions.retryDocumentProcessingFailureEvent({
+                error: error.message || 'Failed to retry processing',
+              })
+            );
+          })
+        )
+      )
+    )
+  );
+
+  // Listen to WebSocket document processing updates
+  listenToDocumentProcessing$ = createEffect(() =>
+    this.webSocketService.messages$.pipe(
+      filter((msg): msg is DocumentProcessingEvent => msg.type === 'document_processing'),
+      map((event) => {
+        // Check if it's an error event
+        if (event.error || event.stage === 'failed') {
+          return DocumentActions.documentProcessingFailureEvent({
+            documentId: event.document_id,
+            error: event.error || event.message || 'Processing failed',
+          });
+        }
+        
+        // Calculate overall progress based on stage and progress
+        let overallProgress = 0;
+        const rawProgress = event.progress; // 0-1 from backend
+        
+        // Map stages to overall progress ranges
+        // First task (process_document): 0-40%
+        // Second task (generate_document_embeddings): 40-100%
+        switch (event.stage) {
+          case 'downloading':
+            if (event.message?.includes('embedding generation')) {
+              // In embedding phase
+              overallProgress = 40 + Math.round(rawProgress * 10); // 40-50%
+            } else {
+              // In text extraction phase
+              overallProgress = Math.round(rawProgress * 20); // 0-20%
+            }
+            break;
+          case 'extracting':
+            overallProgress = 20 + Math.round(rawProgress * 20); // 20-40%
+            break;
+          case 'chunking':
+            overallProgress = 40 + Math.round(rawProgress * 10); // 40-50%
+            break;
+          case 'embedding':
+            overallProgress = 50 + Math.round(rawProgress * 40); // 50-90%
+            break;
+          case 'storing':
+            if (event.message?.includes('embedding')) {
+              overallProgress = 90 + Math.round(rawProgress * 10); // 90-100%
+            } else {
+              overallProgress = 35 + Math.round(rawProgress * 5); // 35-40%
+            }
+            break;
+          case 'completed':
+            overallProgress = 100;
+            break;
+          default:
+            // Fallback to simple conversion
+            overallProgress = Math.round(rawProgress * 100);
+        }
+        
+        // Check if processing is complete
+        if (event.stage === 'completed' || overallProgress >= 100) {
+          // Extract document data from event
+          if (event.document) {
+            // Convert DTO to DocumentListItem
+            const document = toDocumentListItem(event.document);
+            return DocumentActions.documentProcessingCompleteEvent({
+              document,
+            });
+          }
+          
+          // If completed but no document data, log error and treat as failure
+          console.error('Document processing completed but no document data received', event);
+          return DocumentActions.documentProcessingFailureEvent({
+            documentId: event.document_id,
+            error: 'Processing completed but document data is missing',
+          });
+        }
+
+        // Otherwise it's a progress update
+        return DocumentActions.documentProcessingUpdateEvent({
+          documentId: event.document_id,
+          stage: event.stage,
+          progress: Math.min(99, overallProgress), // Cap at 99 until truly complete
+          message: event.message,
+        });
       })
     )
   );

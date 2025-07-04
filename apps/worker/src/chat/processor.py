@@ -1,18 +1,17 @@
 """Chat message processor task."""
 
-import json
 import logging
-from typing import Any, Dict
+from typing import Any
 from uuid import UUID
 
 from arq import ArqRedis
+from shared.models import Chat, ChatMessage, Document
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..common.database import get_db_session
 from ..common.llm_factory import UnifiedLLMFactory
-from shared.models import Chat, ChatMessage, Document, DocumentChunk
-from ..common.redis_progress_reporter import RedisProgressReporter as ProgressReporter, ProgressStage
+from ..common.redis_progress_reporter import ProgressStage
+from ..common.redis_progress_reporter import RedisProgressReporter as ProgressReporter
 
 logger = logging.getLogger(__name__)
 
@@ -23,7 +22,7 @@ async def process_chat_message(
     user_id: str,
     message_id: str,
     message_text: str,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Process a chat message and generate AI response.
     
@@ -84,8 +83,9 @@ async def process_chat_message(
                 query_embedding = await embeddings_model.aembed_query(message_text)
                 
                 # Search for similar chunks using pgvector
-                from sqlalchemy import text
                 import json
+
+                from sqlalchemy import text
                 
                 query_embedding_str = json.dumps(query_embedding)
                 

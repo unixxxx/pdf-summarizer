@@ -12,16 +12,14 @@ from ..common.exceptions import (
     StorageError,
     ValidationError,
 )
-from ..config import get_settings
 from ..database.session import get_db
-from ..storage.dependencies import StorageServiceDep
+from .dependencies import UploadServiceDep
 from .schemas import (
     CompleteUploadRequest,
     CompleteUploadResponse,
     PresignedUrlRequest,
     PresignedUrlResponse,
 )
-from .service import UploadService
 
 router = APIRouter(
     prefix="/upload",
@@ -43,14 +41,11 @@ router = APIRouter(
 async def get_presigned_upload_url(
     request: PresignedUrlRequest,
     current_user: CurrentUserDep,
-    storage_service: StorageServiceDep,
+    upload_service: UploadServiceDep,
     db: AsyncSession = Depends(get_db),
 ) -> PresignedUrlResponse:
     """Generate presigned URL for direct S3 upload."""
     try:
-        settings = get_settings()
-        upload_service = UploadService(storage_service, settings)
-        
         return await upload_service.create_presigned_upload_url(
             request=request,
             user_id=current_user.id,
@@ -87,14 +82,11 @@ async def get_presigned_upload_url(
 async def complete_upload(
     request: CompleteUploadRequest,
     current_user: CurrentUserDep,
-    storage_service: StorageServiceDep,
+    upload_service: UploadServiceDep,
     db: AsyncSession = Depends(get_db),
 ) -> CompleteUploadResponse:
     """Handle post-upload processing initiation."""
     try:
-        settings = get_settings()
-        upload_service = UploadService(storage_service, settings)
-        
         return await upload_service.complete_upload(
             request=request,
             user_id=current_user.id,
@@ -143,14 +135,11 @@ async def get_upload_status(
 async def trigger_document_processing(
     document_id: UUID,
     current_user: CurrentUserDep,
-    storage_service: StorageServiceDep,
+    upload_service: UploadServiceDep,
     db: AsyncSession = Depends(get_db),
 ) -> dict:
     """Trigger document processing for an uploaded document."""
     try:
-        settings = get_settings()
-        upload_service = UploadService(storage_service, settings)
-        
         return await upload_service.trigger_document_processing(
             document_id=document_id,
             user_id=current_user.id,

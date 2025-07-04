@@ -1,6 +1,7 @@
 """Asynchronous flashcard service that uses arq worker."""
 
 from uuid import UUID
+
 from arq import create_pool
 from sqlalchemy.ext.asyncio import AsyncSession
 

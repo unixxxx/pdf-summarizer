@@ -1,9 +1,10 @@
 """Redis-based progress reporting for worker tasks."""
 
 import json
-from typing import Dict, Any
-from redis.asyncio import Redis
 from enum import Enum
+from typing import Any
+
+from redis.asyncio import Redis
 
 from .logger import logger
 
@@ -50,7 +51,7 @@ class RedisProgressReporter:
         stage: str | ProgressStage, 
         progress: float, 
         message: str,
-        details: Dict[str, Any] | None = None
+        details: dict[str, Any] | None = None
     ) -> None:
         """
         Report progress via Redis pub/sub.
@@ -82,10 +83,11 @@ class RedisProgressReporter:
             logger.info(
                 "Progress reported via Redis",
                 job_id=self.job_id,
-                stage=stage,
+                stage=stage if isinstance(stage, str) else stage.value,
                 progress=progress,
                 message=message,
-                channel=self.channel
+                channel=self.channel,
+                has_details="document" in (details or {})
             )
         except Exception as e:
             logger.error(
@@ -96,7 +98,7 @@ class RedisProgressReporter:
                 progress=progress
             )
     
-    async def report_error(self, error: str, details: Dict[str, Any] | None = None) -> None:
+    async def report_error(self, error: str, details: dict[str, Any] | None = None) -> None:
         """Report an error via Redis."""
         await self.report_progress(
             ProgressStage.FAILED,
@@ -105,12 +107,14 @@ class RedisProgressReporter:
             {"error": error, **(details or {})}
         )
     
-    async def report_completion(self, message: str = "Processing completed successfully") -> None:
-        """Report successful completion."""
+    async def report_completion(self, message: str = "Processing completed successfully", document_data: dict[str, Any] | None = None) -> None:
+        """Report successful completion with optional document data."""
+        details = document_data or {}
         await self.report_progress(
             ProgressStage.COMPLETED,
             1.0,
-            message
+            message,
+            details
         )
     
     async def __aenter__(self):

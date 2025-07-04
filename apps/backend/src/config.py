@@ -1,6 +1,5 @@
 import secrets
 from functools import lru_cache
-from typing import Union
 
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -113,7 +112,7 @@ class Settings(BaseSettings):
     )  # 24 hours in seconds
 
     # Security
-    allowed_redirect_urls: Union[str, list[str]] = Field(
+    allowed_redirect_urls: str | list[str] = Field(
         default="http://localhost:4200,http://localhost:8000",
         env="ALLOWED_REDIRECT_URLS",
     )

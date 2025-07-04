@@ -1,8 +1,9 @@
 """CPU monitoring and adaptive throttling utilities."""
 
 import asyncio
+
 import psutil
-from typing import Optional
+
 from ..common.logger import logger
 
 
@@ -21,8 +22,8 @@ class CPUMonitor:
         """
         self.target_cpu_percent = target_cpu_percent
         self.check_interval = check_interval
-        self._current_cpu_percent: Optional[float] = None
-        self._monitoring_task: Optional[asyncio.Task] = None
+        self._current_cpu_percent: float | None = None
+        self._monitoring_task: asyncio.Task | None = None
     
     async def start(self):
         """Start monitoring CPU usage."""

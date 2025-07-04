@@ -213,5 +213,94 @@ export const documentReducer = createReducer(
         },
       };
     }
+  ),
+
+  // Handle document processing updates from WebSocket
+  on(
+    DocumentActions.documentProcessingUpdateEvent,
+    (state, { documentId, stage, progress, message }) => ({
+      ...state,
+      documents: {
+        ...state.documents,
+        data: state.documents.data?.map((doc) =>
+          doc.documentId === documentId
+            ? {
+                ...doc,
+                status: DocumentStatus.PROCESSING,
+                processingStage: stage,
+                processingProgress: progress,
+                processingMessage: message,
+              }
+            : doc
+        ) || [],
+      },
+    })
+  ),
+
+  // Handle document processing complete
+  on(
+    DocumentActions.documentProcessingCompleteEvent,
+    (state, { document }) => ({
+      ...state,
+      documents: {
+        ...state.documents,
+        data: state.documents.data?.map((doc) =>
+          doc.documentId === document.documentId
+            ? {
+                ...document,
+                processingStage: undefined,
+                processingProgress: undefined,
+                processingMessage: undefined,
+              }
+            : doc
+        ) || [],
+      },
+    })
+  ),
+
+  // Handle document processing failed
+  on(
+    DocumentActions.documentProcessingFailureEvent,
+    (state, { documentId, error }) => ({
+      ...state,
+      documents: {
+        ...state.documents,
+        data: state.documents.data?.map((doc) =>
+          doc.documentId === documentId
+            ? {
+                ...doc,
+                status: DocumentStatus.FAILED,
+                processingStage: undefined,
+                processingProgress: undefined,
+                processingMessage: undefined,
+                errorMessage: error,  // Store the error message separately
+              }
+            : doc
+        ) || [],
+      },
+    })
+  ),
+
+  // Handle retry processing success
+  on(
+    DocumentActions.retryDocumentProcessingSuccessEvent,
+    (state, { documentId }) => ({
+      ...state,
+      documents: {
+        ...state.documents,
+        data: state.documents.data?.map((doc) =>
+          doc.documentId === documentId
+            ? {
+                ...doc,
+                status: DocumentStatus.PROCESSING,
+                processingStage: 'queued',
+                processingProgress: 0,
+                processingMessage: 'Retrying document processing...',
+                errorMessage: undefined,  // Clear previous error
+              }
+            : doc
+        ) || [],
+      },
+    })
   )
 );

@@ -4,6 +4,7 @@ import logging
 import re
 from uuid import UUID
 
+from shared.models import Document, Folder, Tag, User, folder_tags
 from sqlalchemy import and_, func, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -13,7 +14,6 @@ from ..common.exceptions import (
     ConflictException,
     NotFoundException,
 )
-from shared.models import Document, Folder, Tag, User, folder_tags
 from ..tag.service import TagService
 from .schemas import (
     FolderCreate,

@@ -1,16 +1,16 @@
 """Document summarization tasks for the worker."""
 
-from typing import Dict, Any
+from typing import Any
 
-from ..common.logger import logger
 from ..common.config import get_settings
 from ..common.llm_factory import UnifiedLLMFactory
+from ..common.logger import logger
 from ..common.retry import retry_on_llm_error
 
 settings = get_settings()
 
 
-async def summarize_text(ctx: dict, text: str, options: dict = None) -> Dict[str, Any]:
+async def summarize_text(ctx: dict, text: str, options: dict = None) -> dict[str, Any]:
     """
     Summarize arbitrary text.
     

@@ -1,7 +1,7 @@
 """Upload service for handling file upload logic."""
 
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
 
 from arq import create_pool
@@ -40,11 +40,17 @@ class UploadService:
     
     MAX_FILE_SIZE = 500 * 1024 * 1024  # 500MB
 
-    def __init__(self, storage_service: StorageService, settings: Settings):
+    def __init__(
+        self,
+        storage_service: StorageService,
+        document_service: DocumentService,
+        folder_service: FolderService,
+        settings: Settings,
+    ):
         self.storage_service = storage_service
+        self.document_service = document_service
+        self.folder_service = folder_service
         self.settings = settings
-        self.document_service = DocumentService()
-        self.folder_service = FolderService()
 
     async def create_presigned_upload_url(
         self,
@@ -216,7 +222,7 @@ class UploadService:
             document_id=str(document.id),
             upload_url=presigned_post["url"],
             fields=presigned_post["fields"],
-            expires_at=datetime.now(timezone.utc) + timedelta(hours=1),
+            expires_at=datetime.now(UTC) + timedelta(hours=1),
         )
 
     async def trigger_document_processing(

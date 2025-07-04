@@ -1,20 +1,11 @@
 import { Injectable, OnDestroy } from '@angular/core';
 import { Subject } from 'rxjs';
-import { tap, share, filter } from 'rxjs/operators';
+import { share } from 'rxjs/operators';
 
 export interface WebSocketMessage {
   type: string;
+  timestamp?: string; // ISO datetime string
   [key: string]: unknown;
-}
-
-export interface DocumentProcessingEvent extends WebSocketMessage {
-  type: 'document_processing';
-  document_id: string;
-  stage: string; // e.g., 'downloading', 'extracting_text', 'generating_embeddings', 'completed'
-  progress: number; // 0-100
-  timestamp?: string;
-  error?: string;
-  message?: string;
 }
 
 export interface ConnectionEvent extends WebSocketMessage {
@@ -39,15 +30,6 @@ export class WebSocketService implements OnDestroy {
   // Observable streams
   messages$ = this.messagesSubject.asObservable().pipe(share());
   connection$ = this.connectionSubject.asObservable().pipe(share());
-
-  // Filtered streams for document processing progress (not file upload progress)
-  documentProcessing$ = this.messages$.pipe(
-    filter(
-      (msg): msg is DocumentProcessingEvent =>
-        msg.type === 'document_processing'
-    ),
-    share()
-  );
 
   connect(): void {
     // Check if already connected or connecting
@@ -112,7 +94,7 @@ export class WebSocketService implements OnDestroy {
       try {
         const data = JSON.parse(event.data);
         this.messagesSubject.next(data);
-      } catch (error) {
+      } catch {
         // Ignore parsing errors
       }
     };
@@ -144,7 +126,7 @@ export class WebSocketService implements OnDestroy {
   private startHeartbeat(): void {
     this.heartbeatTimer = setInterval(() => {
       if (this.socket?.readyState === WebSocket.OPEN) {
-        this.send({ type: 'ping', timestamp: Date.now() });
+        this.send({ type: 'ping' });
       }
     }, 30000); // Send ping every 30 seconds
   }
@@ -185,12 +167,6 @@ export class WebSocketService implements OnDestroy {
     }
   }
 
-  subscribeToDocument(documentId: string): void {
-    this.send({
-      type: 'subscribe',
-      document_id: documentId,
-    });
-  }
 
   disconnect(): void {
     this.intentionalDisconnect = true;

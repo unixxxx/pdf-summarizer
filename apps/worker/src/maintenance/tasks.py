@@ -1,19 +1,20 @@
 """Maintenance tasks for the worker."""
 
-from typing import Dict, Any
 from datetime import datetime, timedelta
 from pathlib import Path
-from sqlalchemy import select, and_, or_
+from typing import Any
 
-from ..common.database import get_db_session
 from shared.models import Document
-from ..common.logger import logger
+from sqlalchemy import and_, select
+
 from ..common.config import get_settings
+from ..common.database import get_db_session
+from ..common.logger import logger
 
 settings = get_settings()
 
 
-async def cleanup_orphaned_files(ctx: dict) -> Dict[str, Any]:
+async def cleanup_orphaned_files(ctx: dict) -> dict[str, Any]:
     """
     Clean up orphaned files from storage that no longer have database records.
     

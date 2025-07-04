@@ -3,12 +3,12 @@
 import logging
 from uuid import UUID
 
+from shared.models import User as UserModel
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..common.exceptions import ConflictException, NotFoundException
-from shared.models import User as UserModel
 from .schemas import User as UserSchema
 from .schemas import UserCreate
 

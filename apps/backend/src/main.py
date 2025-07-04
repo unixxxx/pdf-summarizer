@@ -7,6 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
 
+from .archive.router import router as archive_router
 from .auth.router import router as auth_router
 from .chat.async_router import router as chat_router
 from .common.cache_service import CacheService
@@ -21,19 +22,16 @@ from .common.logging import get_logger, setup_logging
 from .common.monitoring import PerformanceMonitoringMiddleware, metrics
 from .common.schemas import ErrorResponse
 from .config import get_settings
+from .document.router import router as document_router
 
 # Import domain routers
 from .flashcard.async_router import router as flashcard_router
-from .health.router import router as health_router
-from .archive.router import router as archive_router
-from .document.router import router as document_router
 from .folder.router import router as folder_router
-from .tag.router import router as tag_router
-from .monitoring.router import router as monitoring_router
-from .processing.router import router as processing_router
+from .monitoring.router import health_router, monitoring_router
 from .quiz.async_router import router as quiz_router
 from .storage.router import router as storage_router
 from .summarization.async_router import router as summarization_router
+from .tag.router import router as tag_router
 from .upload.router import router as upload_router
 from .websocket.connection_manager import manager as ws_manager
 from .websocket.router import router as websocket_router
@@ -159,7 +157,7 @@ def create_app() -> FastAPI:
         return response
 
     # Include routers
-    app.include_router(health_router)
+    app.include_router(health_router)  # Root level health endpoints
     app.include_router(auth_router, prefix="/api/v1")
     
     # Library module routers
@@ -170,7 +168,6 @@ def create_app() -> FastAPI:
     
     # Learning module routers
     app.include_router(upload_router, prefix="/api/v1")
-    app.include_router(processing_router, prefix="/api/v1")
     app.include_router(quiz_router, prefix="/api/v1")
     app.include_router(flashcard_router, prefix="/api/v1")
     

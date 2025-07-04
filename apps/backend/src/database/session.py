@@ -8,8 +8,6 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 
-from shared.models import Base  # Import Base from shared models
-
 from ..config import get_settings
 
 settings = get_settings()

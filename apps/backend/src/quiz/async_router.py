@@ -6,11 +6,11 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..auth.dependencies import CurrentUserDep
-from ..common.exceptions import NotFoundException, BadRequestException
+from ..common.exceptions import BadRequestException, NotFoundException
 from ..database.session import get_db
 from ..document.dependencies import DocumentServiceDep
+from .dependencies import AsyncQuizServiceDep
 from .schemas import QuizOptions
-from .async_service import AsyncQuizService
 
 router = APIRouter(
     prefix="/quiz",
@@ -33,13 +33,11 @@ async def generate_quiz_async(
     options: QuizOptions,
     current_user: CurrentUserDep,
     document_service: DocumentServiceDep,
+    quiz_service: AsyncQuizServiceDep,
     db: AsyncSession = Depends(get_db),
 ) -> dict:
     """Queue quiz generation for a document."""
     try:
-        # Create async quiz service
-        quiz_service = AsyncQuizService()
-        
         # Enqueue quiz generation
         result = await quiz_service.enqueue_quiz_generation(
             document_id=document_id,
@@ -76,10 +74,10 @@ async def generate_quiz_async(
 async def get_quiz_job_status(
     job_id: str,
     current_user: CurrentUserDep,
+    quiz_service: AsyncQuizServiceDep,
 ) -> dict:
     """Get the status of a quiz generation job."""
     try:
-        quiz_service = AsyncQuizService()
         result = await quiz_service.get_quiz_status(job_id)
         
         # TODO: Add security check to ensure user owns the document/quiz

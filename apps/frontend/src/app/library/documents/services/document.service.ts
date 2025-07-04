@@ -78,6 +78,23 @@ export class DocumentService {
     );
   }
 
+  /**
+   * Retry processing for a failed document
+   */
+  retryProcessing(documentId: string): Observable<{
+    document_id: string;
+    job_id: string;
+    status: string;
+    message: string;
+  }> {
+    return this.http.post<{
+      document_id: string;
+      job_id: string;
+      status: string;
+      message: string;
+    }>(`${this.baseUrl}/${documentId}/retry`, {});
+  }
+
   private buildParams(criteria?: DocumentSearchCriteria): HttpParams {
     let params = new HttpParams();
 

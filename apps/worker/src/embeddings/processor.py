@@ -1,22 +1,25 @@
 """Embedding generation tasks for documents and tags."""
 
-from typing import List, Dict, Any
-import numpy as np
 import asyncio
-from langchain.text_splitter import RecursiveCharacterTextSplitter
-from sqlalchemy import select, update, delete, func
+from typing import Any
 
+import numpy as np
+from langchain.text_splitter import RecursiveCharacterTextSplitter
+from shared.models import Document, DocumentChunk, DocumentStatus, Tag
+from sqlalchemy import delete, func, select, update
+
+from ..common.config import get_settings
+from ..common.cpu_monitor import cpu_monitor
 from ..common.database import get_db_session
-from shared.models import Document, DocumentChunk, Tag, DocumentStatus
+from ..common.llm_factory import UnifiedLLMFactory
 from ..common.logger import logger
 from ..common.redis_progress_reporter import (
-    RedisProgressReporter as ProgressReporter,
     ProgressStage,
 )
-from ..common.config import get_settings
-from ..common.llm_factory import UnifiedLLMFactory
+from ..common.redis_progress_reporter import (
+    RedisProgressReporter as ProgressReporter,
+)
 from ..common.retry import retry_on_llm_error
-from ..common.cpu_monitor import cpu_monitor
 
 settings = get_settings()
 
@@ -29,7 +32,7 @@ class ChunkingStrategy:
     SEPARATORS = ["\n\n", "\n", ". ", " ", ""]
 
 
-def chunk_document(text: str) -> List[Dict[str, Any]]:
+def chunk_document(text: str) -> list[dict[str, Any]]:
     """
     Split document text into chunks for embedding.
 
@@ -56,7 +59,7 @@ def chunk_document(text: str) -> List[Dict[str, Any]]:
 
 
 @retry_on_llm_error(max_attempts=3)
-async def generate_embedding(text: str, embeddings_model) -> List[float]:
+async def generate_embedding(text: str, embeddings_model) -> list[float]:
     """Generate embedding for a text chunk with retry logic."""
     embedding = await embeddings_model.aembed_query(text)
     return embedding
@@ -64,8 +67,8 @@ async def generate_embedding(text: str, embeddings_model) -> List[float]:
 
 @retry_on_llm_error(max_attempts=3)
 async def generate_batch_embeddings(
-    texts: List[str], embeddings_model
-) -> List[List[float]]:
+    texts: list[str], embeddings_model
+) -> list[list[float]]:
     """Generate embeddings for multiple texts in a single API call."""
     # Most embedding models support batch operations via aembed_documents
     try:
@@ -85,7 +88,7 @@ async def generate_batch_embeddings(
 
 async def generate_document_embeddings(
     ctx: dict, document_id: str, user_id: str
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Generate embeddings for all document chunks.
 
@@ -213,6 +216,8 @@ async def generate_document_embeddings(
             await reporter.report_progress(
                 ProgressStage.STORING, 0.85, "Storing embeddings in database"
             )
+            
+            logger.info("Starting to store embeddings in database", document_id=document_id)
 
             async with get_db_session() as db:
                 # Delete existing chunks
@@ -243,13 +248,17 @@ async def generate_document_embeddings(
                 )
 
                 await db.commit()
+                logger.info("Embeddings stored successfully", document_id=document_id)
 
-            # 5. Complete
-            await reporter.report_progress(
-                ProgressStage.COMPLETED,
-                1.0,
-                "Embedding generation completed successfully",
+            # 5. Report completion (backend will fetch document data)
+            logger.info("Reporting completion via Redis", document_id=document_id)
+            await reporter.report_completion(
+                "Embedding generation completed successfully"
             )
+            logger.info("Completion reported successfully", document_id=document_id)
+            
+            # Small delay to ensure message is sent before function returns
+            await asyncio.sleep(0.1)
 
             logger.info(
                 "Document embeddings generated",
@@ -296,7 +305,7 @@ async def generate_document_embeddings(
             raise
 
 
-async def generate_tag_embeddings(ctx: dict, tag_names: List[str]) -> Dict[str, Any]:
+async def generate_tag_embeddings(ctx: dict, tag_names: list[str]) -> dict[str, Any]:
     """
     Generate embeddings for tags.
 
@@ -347,7 +356,7 @@ async def generate_tag_embeddings(ctx: dict, tag_names: List[str]) -> Dict[str, 
         raise
 
 
-async def update_all_tag_embeddings(ctx: dict) -> Dict[str, Any]:
+async def update_all_tag_embeddings(ctx: dict) -> dict[str, Any]:
     """
     Update embeddings for all tags in the system.
 

@@ -60,5 +60,28 @@ export const DocumentActions = createActionGroup({
     'Open Delete Document Modal Command': props<{
       document: DocumentListItem;
     }>(),
+
+    // Retry processing
+    'Retry Document Processing Command': props<{ documentId: string }>(),
+    'Retry Document Processing Success Event': props<{
+      documentId: string;
+      jobId: string;
+    }>(),
+    'Retry Document Processing Failure Event': props<{ error: string }>(),
+
+    // Document processing updates from WebSocket
+    'Document Processing Update Event': props<{
+      documentId: string;
+      stage: string;
+      progress: number;
+      message?: string;
+    }>(),
+    'Document Processing Complete Event': props<{
+      document: DocumentListItem;
+    }>(),
+    'Document processing failure event': props<{
+      documentId: string;
+      error: string;
+    }>(),
   },
 });

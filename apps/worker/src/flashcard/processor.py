@@ -1,17 +1,18 @@
 """Flashcard generation tasks for the worker."""
 
-from typing import Dict, Any, List
 from datetime import datetime
-from uuid import uuid4
 from enum import Enum
+from typing import Any
+from uuid import uuid4
+
 from pydantic import BaseModel, Field
+from shared.models import Document
 from sqlalchemy import select
 
-from ..common.database import get_db_session
-from shared.models import Document
-from ..common.logger import logger
 from ..common.config import get_settings
+from ..common.database import get_db_session
 from ..common.llm_factory import UnifiedLLMFactory
+from ..common.logger import logger
 from ..common.retry import retry_on_llm_error
 
 settings = get_settings()
@@ -41,13 +42,13 @@ class Flashcard(BaseModel):
     back: str
     type: FlashcardType
     difficulty: FlashcardDifficulty
-    tags: List[str] = Field(default_factory=list)
+    tags: list[str] = Field(default_factory=list)
     hint: str | None = None
 
 
 class FlashcardGeneration(BaseModel):
     """Structured output for flashcard generation."""
-    flashcards: List[Flashcard]
+    flashcards: list[Flashcard]
 
 
 async def generate_flashcards(
@@ -55,9 +56,9 @@ async def generate_flashcards(
     document_id: str,
     user_id: str,
     num_cards: int = 20,
-    card_types: List[str] | None = None,
+    card_types: list[str] | None = None,
     difficulty: str = "mixed"
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Generate flashcards from a document.
     
