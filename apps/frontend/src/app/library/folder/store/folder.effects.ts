@@ -311,6 +311,32 @@ export class FolderEffects {
     )
   );
 
+  // Move document to unfiled
+  moveDocumentToUnfiled$ = createEffect(() =>
+    this.actions$.pipe(
+      ofType(FolderActions.moveDocumentToUnfiledCommand),
+      switchMap(({ documentId, from }) => {
+        return this.folderService.removeDocumentsFromFolder(from, [documentId]).pipe(
+          mapResponse({
+            next: () => {
+              this.uiStore.showSuccess('Document moved to unfiled');
+              return FolderActions.moveDocumentToUnfiledSuccessEvent({
+                documentId,
+                from,
+              });
+            },
+            error: (error: Error) => {
+              this.uiStore.showError('Failed to move document to unfiled');
+              return FolderActions.moveDocumentToUnfiledFailureEvent({
+                error: error.message || 'Failed to move document',
+              });
+            },
+          })
+        );
+      })
+    )
+  );
+
   // Refresh folders after folder restoration from archive
   refreshAfterFolderRestore$ = createEffect(() =>
     this.actions$.pipe(

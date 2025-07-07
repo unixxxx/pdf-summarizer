@@ -48,5 +48,16 @@ export const FolderActions = createActionGroup({
       documentId: string;
     }>(),
     'Add documents to folder failure event': props<{ error: string }>(),
+    
+    // Move document to unfiled
+    'Move document to unfiled command': props<{
+      documentId: string;
+      from: string;
+    }>(),
+    'Move document to unfiled success event': props<{
+      documentId: string;
+      from: string;
+    }>(),
+    'Move document to unfiled failure event': props<{ error: string }>(),
   },
 });

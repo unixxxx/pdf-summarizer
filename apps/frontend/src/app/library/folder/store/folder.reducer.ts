@@ -374,6 +374,30 @@ export const folderReducer = createReducer<FolderState>(
         AsyncDataItemState.LOADED
       ),
     };
+  }),
+
+  // Handle moving document to unfiled
+  on(FolderActions.moveDocumentToUnfiledSuccessEvent, (state, { from }) => {
+    const currentData = state.folder.data;
+
+    // Decrease count in source folder and its ancestors
+    const updatedFolders = updateDocumentCountInAncestors(
+      [...currentData.folders],
+      from,
+      -1
+    );
+
+    return {
+      ...state,
+      folder: wrapAsAsyncDataItem(
+        {
+          ...currentData,
+          unfiledCount: currentData.unfiledCount + 1,
+          folders: updatedFolders,
+        },
+        AsyncDataItemState.LOADED
+      ),
+    };
   })
 );
 

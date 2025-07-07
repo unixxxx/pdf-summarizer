@@ -45,4 +45,16 @@ export class FolderService {
       { document_ids: documentIds }
     );
   }
+
+  removeDocumentsFromFolder(
+    folderId: string,
+    documentIds: string[]
+  ): Observable<FolderItemDto> {
+    return this.http.request<FolderItemDto>('DELETE', 
+      `${this.apiUrl}/${folderId}/documents`,
+      { 
+        body: { document_ids: documentIds }
+      }
+    );
+  }
 }

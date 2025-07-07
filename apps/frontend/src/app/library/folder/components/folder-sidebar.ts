@@ -227,6 +227,17 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
               ? 'Unfiled (' + folderData.unfiledCount + ')'
               : ''
           "
+          [class.bg-primary-100]="dragOverUnfiled()"
+          [class.dark:bg-primary-900]="dragOverUnfiled()"
+          [class.scale-[1.02]]="dragOverUnfiled()"
+          [class.shadow-lg]="dragOverUnfiled()"
+          [class.border-2]="dragOverUnfiled()"
+          [class.border-primary-500]="dragOverUnfiled()"
+          [class.border-dashed]="dragOverUnfiled()"
+          (drop)="onDropToUnfiled($event)"
+          (dragover)="onDragOverUnfiled($event)"
+          (dragleave)="onDragLeaveUnfiled($event)"
+          (dragenter)="onDragEnterUnfiled($event)"
         >
           <svg
             class="w-4 h-4 flex-shrink-0"
@@ -443,6 +454,9 @@ export class FolderSidebar {
   // Track drag over archive
   protected dragOverArchive = signal(false);
 
+  // Track drag over unfiled
+  protected dragOverUnfiled = signal(false);
+
   private onDragSubject$ = new Subject<string | undefined>();
 
   constructor() {
@@ -586,5 +600,42 @@ export class FolderSidebar {
     event.preventDefault();
     event.stopPropagation();
     this.dragOverArchive.set(true);
+  }
+
+  onDropToUnfiled(event: DragEvent) {
+    event.preventDefault();
+    event.stopPropagation();
+    this.dragOverUnfiled.set(false);
+    
+    const documentId = event.dataTransfer?.getData('documentId');
+    const currentFolderId = event.dataTransfer?.getData('folderId');
+    
+    if (documentId && currentFolderId) {
+      // Move document to unfiled (remove from current folder)
+      this.store.dispatch(
+        FolderActions.moveDocumentToUnfiledCommand({
+          documentId,
+          from: currentFolderId,
+        })
+      );
+    }
+  }
+
+  onDragOverUnfiled(event: DragEvent) {
+    event.preventDefault();
+    event.stopPropagation();
+    this.dragOverUnfiled.set(true);
+  }
+
+  onDragLeaveUnfiled(event: DragEvent) {
+    event.preventDefault();
+    event.stopPropagation();
+    this.dragOverUnfiled.set(false);
+  }
+
+  onDragEnterUnfiled(event: DragEvent) {
+    event.preventDefault();
+    event.stopPropagation();
+    this.dragOverUnfiled.set(true);
   }
 }

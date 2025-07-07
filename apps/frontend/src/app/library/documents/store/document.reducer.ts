@@ -302,5 +302,54 @@ export const documentReducer = createReducer(
         ) || [],
       },
     })
+  ),
+
+  // Handle document moved to unfiled
+  on(
+    FolderActions.moveDocumentToUnfiledSuccessEvent,
+    (state, { documentId, from }) => {
+      // Find the document that was moved
+      const movedDocument = state.documents.data?.find(
+        (doc) => doc.documentId === documentId
+      );
+
+      if (!movedDocument) {
+        return state;
+      }
+
+      // If we're viewing a specific folder, remove the document from the list
+      // If we're viewing all documents or unfiled, just update the folderId
+      const isViewingSpecificFolder = movedDocument.folderId === from;
+      
+      if (isViewingSpecificFolder) {
+        // Remove from current folder view
+        return {
+          ...state,
+          documents: {
+            ...state.documents,
+            data: state.documents.data?.filter(
+              (doc) => doc.documentId !== documentId
+            ) || [],
+          },
+          pagination: {
+            ...state.pagination,
+            total: Math.max(0, state.pagination.total - 1),
+          },
+        };
+      } else {
+        // Just update the folderId for "all documents" or "unfiled" view
+        return {
+          ...state,
+          documents: {
+            ...state.documents,
+            data: state.documents.data?.map((doc) =>
+              doc.documentId === documentId
+                ? { ...doc, folderId: undefined }
+                : doc
+            ) || [],
+          },
+        };
+      }
+    }
   )
 );
