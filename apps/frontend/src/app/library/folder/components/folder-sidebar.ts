@@ -15,6 +15,8 @@ import { FolderTree as Folder } from '../store/state/folder-tree';
 import { Store } from '@ngrx/store';
 import { folderFeature } from '../store/folder.feature';
 import { FolderActions } from '../store/folder.actions';
+import { DocumentActions } from '../../documents/store/document.actions';
+import { DocumentListItem } from '../../documents/store/state/document';
 import { UnwrapAsyncDataPipe } from '../../../core/pipes/unwrapAsyncData';
 import { QueryAsyncStatePipe } from '../../../core/pipes/queryAsyncState';
 import { AsyncDataItem } from '../../../core/utils/async-data-item';
@@ -258,6 +260,17 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
           class="flex items-center px-3 py-2 text-sm font-medium text-foreground hover:bg-muted rounded-lg transition-colors mb-4"
           [class.gap-2]="!uiStore.sidebarCollapsed()"
           [title]="uiStore.sidebarCollapsed() ? 'Archive' : ''"
+          [class.bg-error-100]="dragOverArchive()"
+          [class.dark:bg-error-900]="dragOverArchive()"
+          [class.scale-[1.02]]="dragOverArchive()"
+          [class.shadow-lg]="dragOverArchive()"
+          [class.border-2]="dragOverArchive()"
+          [class.border-error-500]="dragOverArchive()"
+          [class.border-dashed]="dragOverArchive()"
+          (drop)="onDropToArchive($event)"
+          (dragover)="onDragOverArchive($event)"
+          (dragleave)="onDragLeaveArchive($event)"
+          (dragenter)="onDragEnterArchive($event)"
         >
           <svg
             class="w-4 h-4 flex-shrink-0"
@@ -427,6 +440,9 @@ export class FolderSidebar {
   // Track which folder is being hovered in collapsed mode
   protected hoveredFolderId = signal<string | null>(null);
 
+  // Track drag over archive
+  protected dragOverArchive = signal(false);
+
   private onDragSubject$ = new Subject<string | undefined>();
 
   constructor() {
@@ -528,5 +544,47 @@ export class FolderSidebar {
 
   onFolderLeave() {
     this.hoveredFolderId.set(null);
+  }
+
+  onDropToArchive(event: DragEvent) {
+    event.preventDefault();
+    event.stopPropagation();
+    this.dragOverArchive.set(false);
+    
+    const documentId = event.dataTransfer?.getData('documentId');
+    const filename = event.dataTransfer?.getData('text/plain') || 'Document';
+    
+    if (documentId) {
+      // We'll create a minimal document object to pass to the delete modal
+      // The modal will show the filename we have
+      this.store.dispatch(
+        DocumentActions.openDeleteDocumentModalCommand({
+          document: {
+            id: documentId,
+            documentId: documentId,
+            filename: filename,
+            folderId: event.dataTransfer?.getData('folderId') || undefined,
+          } as DocumentListItem
+        })
+      );
+    }
+  }
+
+  onDragOverArchive(event: DragEvent) {
+    event.preventDefault();
+    event.stopPropagation();
+    this.dragOverArchive.set(true);
+  }
+
+  onDragLeaveArchive(event: DragEvent) {
+    event.preventDefault();
+    event.stopPropagation();
+    this.dragOverArchive.set(false);
+  }
+
+  onDragEnterArchive(event: DragEvent) {
+    event.preventDefault();
+    event.stopPropagation();
+    this.dragOverArchive.set(true);
   }
 }
