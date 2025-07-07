@@ -1,16 +1,17 @@
 """Embedding generation tasks for documents and tags."""
 
 import asyncio
+import json
+from collections.abc import AsyncGenerator
 from typing import Any
 from uuid import UUID
 
 import numpy as np
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from shared.models import Document, DocumentChunk, DocumentStatus, Tag
-from sqlalchemy import delete, select, update
+from sqlalchemy import delete, func, select, update
 
 from ..common.config import get_settings
-from ..common.cpu_monitor import cpu_monitor
 from ..common.database import get_db_session
 from ..common.llm_factory import UnifiedLLMFactory
 from ..common.logger import logger
@@ -54,6 +55,44 @@ def chunk_document(text: str) -> list[dict[str, Any]]:
         }
         for i, chunk in enumerate(chunks)
     ]
+
+
+async def stream_text_chunks(
+    text: str,
+    chunk_size: int = 1000,
+    chunk_overlap: int = 200
+) -> AsyncGenerator[dict]:
+    """
+    Stream text chunks for memory-efficient processing.
+    
+    Args:
+        text: Document text to chunk
+        chunk_size: Size of each chunk
+        chunk_overlap: Overlap between chunks
+        
+    Yields:
+        Dict with chunk data including text and metadata
+    """
+    text_splitter = RecursiveCharacterTextSplitter(
+        chunk_size=chunk_size,
+        chunk_overlap=chunk_overlap,
+        separators=ChunkingStrategy.SEPARATORS,
+        length_function=len,
+    )
+    
+    # Split text into chunks
+    chunks = text_splitter.split_text(text)
+    
+    # Yield chunks one at a time
+    for i, chunk in enumerate(chunks):
+        yield {
+            "text": chunk,
+            "chunk_index": i,
+            "start_char": sum(len(c) + 1 for c in chunks[:i]),  # Approximate
+        }
+        # Small delay to prevent overwhelming the system
+        if i % 10 == 0:
+            await asyncio.sleep(0)
 
 
 @retry_on_llm_error(max_attempts=3)
@@ -137,7 +176,19 @@ async def generate_document_embeddings(
                 if not document.extracted_text:
                     raise ValueError(f"Document {document_id} has no extracted text")
 
-            # 2. Chunk document
+            # Check if streaming is enabled
+            if settings.use_streaming:
+                # Use streaming approach
+                return await _process_embeddings_streaming(
+                    document=document,
+                    document_id=document_id,
+                    embeddings_model=embeddings_model,
+                    embedding_dimension=embedding_dimension,
+                    reporter=reporter,
+                    settings=settings
+                )
+            
+            # 2. Chunk document (non-streaming approach)
             await reporter.report_progress(
                 ProgressStage.CHUNKING, 0.15, "Splitting document into chunks"
             )
@@ -166,14 +217,7 @@ async def generate_document_embeddings(
                 batch_end = min(batch_start + batch_size, total_chunks)
                 batch_chunks = chunks[batch_start:batch_end]
 
-                # Check if we should pause for high CPU
-                if cpu_monitor.should_pause():
-                    await reporter.report_progress(
-                        ProgressStage.EMBEDDING,
-                        0.20 + (0.65 * (batch_start / total_chunks)),
-                        "Pausing for CPU cooldown",
-                    )
-                    await cpu_monitor.wait_for_cpu()
+                # CPU monitoring removed for production
 
                 # Calculate progress (20% to 85%)
                 batch_progress = 0.20 + (0.65 * (batch_start / total_chunks))
@@ -199,9 +243,8 @@ async def generate_document_embeddings(
                     batch_texts, embeddings_model
                 )
 
-                # Add adaptive CPU throttle delay after batch processing
-                throttle_delay = cpu_monitor.get_throttle_delay(base_delay)
-                await asyncio.sleep(throttle_delay)
+                # Fixed delay after batch processing
+                await asyncio.sleep(base_delay)
 
                 # Combine results
                 for i, embedding in enumerate(batch_embeddings):
@@ -209,10 +252,9 @@ async def generate_document_embeddings(
                         {"chunk": batch_chunks[i], "embedding": embedding}
                     )
 
-                # Add adaptive delay between batches to cool down CPU
+                # Fixed delay between batches
                 if batch_end < total_chunks:
-                    throttle_delay = cpu_monitor.get_throttle_delay(base_delay * 2)
-                    await asyncio.sleep(throttle_delay)
+                    await asyncio.sleep(base_delay * 2)
 
             # 4. Store embeddings in database
             await reporter.report_progress(
@@ -260,11 +302,15 @@ async def generate_document_embeddings(
             redis_pool = await create_pool(RedisSettings.from_dsn(settings.redis_url))
             
             try:
+                # Use a timestamp-based job ID to avoid conflicts with failed jobs
+                import time
+                summary_job_id = f"summary:{document_id}:{int(time.time())}"
+                
                 job = await redis_pool.enqueue_job(
                     "generate_document_summary",
                     str(document_id),
                     str(user_id),
-                    _job_id=f"summary:{document_id}",
+                    _job_id=summary_job_id,
                     _defer_by=1,  # Start after 1 second
                     _queue_name="doculearn:queue"
                 )
@@ -272,7 +318,7 @@ async def generate_document_embeddings(
                 logger.info(
                     "Summary generation job enqueued",
                     document_id=document_id,
-                    job_id=f"summary:{document_id}",
+                    job_id=summary_job_id,
                     job_result=job is not None
                 )
             finally:
@@ -332,6 +378,157 @@ async def generate_document_embeddings(
 
             await reporter.report_error(str(e))
             raise
+
+
+async def _process_embeddings_streaming(
+    document,
+    document_id: str,
+    embeddings_model,
+    embedding_dimension: int,
+    reporter: ProgressReporter,
+    settings: Any
+) -> dict[str, Any]:
+    """
+    Helper function to process embeddings using streaming approach.
+    """
+    await reporter.report_progress(
+        ProgressStage.CHUNKING, 0.15, "Starting streaming chunk processing"
+    )
+    
+    batch_size = settings.batch_size
+    base_delay = settings.cpu_throttle_delay
+    
+    # Delete existing chunks
+    async with get_db_session() as db:
+        await db.execute(
+            delete(DocumentChunk).where(
+                DocumentChunk.document_id == document_id
+            )
+        )
+        await db.commit()
+    
+    # Process chunks in streaming fashion
+    chunk_batch = []
+    total_chunks_processed = 0
+    
+    async for chunk in stream_text_chunks(
+        document.extracted_text,
+        chunk_size=ChunkingStrategy.CHUNK_SIZE,
+        chunk_overlap=ChunkingStrategy.CHUNK_OVERLAP
+    ):
+        chunk_batch.append(chunk)
+        
+        # Process batch when full
+        if len(chunk_batch) >= batch_size:
+            # Generate embeddings for batch
+            texts = [c["text"] for c in chunk_batch]
+            embeddings = await generate_batch_embeddings(texts, embeddings_model)
+            
+            # Store chunks with embeddings
+            async with get_db_session() as db:
+                for i, (chunk_data, embedding) in enumerate(zip(chunk_batch, embeddings, strict=False)):
+                    chunk_record = DocumentChunk(
+                        document_id=document_id,
+                        chunk_text=chunk_data["text"],
+                        chunk_index=chunk_data["chunk_index"],
+                        embedding=embedding,
+                        chunk_metadata=json.dumps({
+                            "embedding_model": settings.llm_provider,
+                            "embedding_dimension": embedding_dimension,
+                            "start_char": chunk_data["start_char"],
+                        }),
+                    )
+                    db.add(chunk_record)
+                
+                await db.commit()
+            
+            total_chunks_processed += len(chunk_batch)
+            
+            # Report progress
+            await reporter.report_progress(
+                ProgressStage.EMBEDDING,
+                min(0.85, 0.20 + (0.65 * (total_chunks_processed / 100))),  # Estimate
+                f"Processed {total_chunks_processed} chunks (streaming)"
+            )
+            
+            # Clear batch
+            chunk_batch = []
+            
+            # Delay between batches
+            await asyncio.sleep(base_delay)
+    
+    # Process remaining chunks
+    if chunk_batch:
+        texts = [c["text"] for c in chunk_batch]
+        embeddings = await generate_batch_embeddings(texts, embeddings_model)
+        
+        async with get_db_session() as db:
+            for chunk_data, embedding in zip(chunk_batch, embeddings, strict=False):
+                chunk_record = DocumentChunk(
+                    document_id=document_id,
+                    chunk_text=chunk_data["text"],
+                    chunk_index=chunk_data["chunk_index"],
+                    embedding=embedding,
+                    chunk_metadata=json.dumps({
+                        "embedding_model": settings.llm_provider,
+                        "embedding_dimension": embedding_dimension,
+                        "start_char": chunk_data["start_char"],
+                    }),
+                )
+                db.add(chunk_record)
+            
+            await db.commit()
+        
+        total_chunks_processed += len(chunk_batch)
+    
+    # Update document status
+    await reporter.report_progress(
+        ProgressStage.STORING, 0.90, "Finalizing document"
+    )
+    
+    async with get_db_session() as db:
+        await db.execute(
+            update(Document)
+            .where(Document.id == document_id)
+            .values(
+                status=DocumentStatus.PROCESSING,  # Keep as PROCESSING, summary is next
+                processed_at=func.now()
+            )
+        )
+        await db.commit()
+    
+    # Queue summary generation
+    from arq import create_pool
+    from arq.connections import RedisSettings
+    redis_conn = await create_pool(RedisSettings.from_dsn(settings.redis_url))
+    
+    # Use a timestamp-based job ID to avoid conflicts with failed jobs
+    import time
+    summary_job_id = f"summary:{document_id}:{int(time.time())}"
+    
+    await redis_conn.enqueue_job(
+        "generate_document_summary",
+        document_id,
+        str(document.user_id),
+        _job_id=summary_job_id,
+        _defer_by=1,
+        _queue_name="doculearn:queue"
+    )
+    await redis_conn.close()
+    
+    await reporter.report_progress(
+        ProgressStage.COMPLETED,
+        1.0,
+        f"Streaming embedding complete: {total_chunks_processed} chunks"
+    )
+    
+    return {
+        "success": True,
+        "document_id": document_id,
+        "chunks_processed": total_chunks_processed,
+        "streaming": True,
+        "next_task": "generate_document_summary"
+    }
 
 
 async def generate_tag_embeddings(ctx: dict, tag_ids: list[str]) -> dict[str, Any]:

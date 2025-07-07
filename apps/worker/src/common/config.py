@@ -42,6 +42,7 @@ class WorkerSettings(BaseSettings):
     cpu_throttle_delay: float = Field(default=0.1, env="CPU_THROTTLE_DELAY")  # Delay between intensive operations
     batch_size: int = Field(default=5, env="BATCH_SIZE")  # Process embeddings in smaller batches
     embedding_concurrency: int = Field(default=2, env="EMBEDDING_CONCURRENCY")  # Limit concurrent embedding operations
+    use_streaming: bool = Field(default=True, env="USE_STREAMING")  # Enable streaming processing for better memory usage
     
     # S3 configuration
     aws_access_key_id: str | None = Field(default=None, env="AWS_ACCESS_KEY_ID")

@@ -3,7 +3,7 @@
 import logging
 import uuid
 from pathlib import Path
-from typing import Any
+from typing import Any, AsyncGenerator
 from uuid import UUID
 
 import aioboto3
@@ -493,6 +493,56 @@ class StorageService:
             "download_url": f"/api/v1/storage/{document.storage_path}",
             "filename": document.filename
         }
+    
+    async def stream_download(
+        self,
+        storage_key: str,
+        chunk_size: int = 1024 * 1024  # 1MB chunks
+    ) -> AsyncGenerator[bytes, None]:
+        """
+        Stream download file from storage in chunks.
+        
+        Args:
+            storage_key: Storage path/key for the file
+            chunk_size: Size of each chunk to yield
+            
+        Yields:
+            File content in chunks
+        """
+        if self.is_s3:
+            try:
+                async with self.session.client(
+                    's3',
+                    endpoint_url=self.settings.s3_endpoint_url
+                ) as s3_client:
+                    response = await s3_client.get_object(
+                        Bucket=self.settings.s3_bucket_name,
+                        Key=storage_key
+                    )
+                    
+                    # Stream body
+                    async for chunk in response['Body'].iter_chunks(chunk_size):
+                        yield chunk
+                        
+            except ClientError as e:
+                if e.response['Error']['Code'] == 'NoSuchKey':
+                    raise StorageError(f"File not found: {storage_key}")
+                raise StorageError(f"Failed to stream from S3: {str(e)}")
+        else:
+            file_path = self.local_path / storage_key
+            
+            if not file_path.exists():
+                raise StorageError(f"File not found: {storage_key}")
+            
+            try:
+                async with aiofiles.open(file_path, 'rb') as f:
+                    while True:
+                        chunk = await f.read(chunk_size)
+                        if not chunk:
+                            break
+                        yield chunk
+            except OSError as e:
+                raise StorageError(f"Failed to stream file locally: {str(e)}")
     
     async def get_text_document_content(
         self,

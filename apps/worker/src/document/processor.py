@@ -2,6 +2,7 @@
 
 import asyncio
 import io
+from collections.abc import AsyncGenerator
 from typing import Any
 
 import aioboto3
@@ -10,7 +11,6 @@ from shared.models import Document, DocumentStatus
 from sqlalchemy import select
 
 from ..common.config import get_settings
-from ..common.cpu_monitor import cpu_monitor
 from ..common.database import get_db_session
 from ..common.logger import logger
 from ..common.progress_calculator import ProcessingStages
@@ -20,30 +20,43 @@ from ..common.staged_progress_reporter import StagedProgressReporter as Progress
 settings = get_settings()
 
 
-async def extract_pdf_text(file_content: bytes) -> tuple[str, int]:
+async def stream_pdf_pages(file_content: bytes) -> AsyncGenerator[tuple[int, str]]:
     """
-    Extract text and page count from PDF content.
+    Stream PDF pages one at a time to avoid loading entire text into memory.
+    
+    Yields:
+        Tuple of (page_number, page_text)
+    """
+    pdf_reader = PyPDF2.PdfReader(io.BytesIO(file_content))
+    total_pages = len(pdf_reader.pages)
+    
+    for page_num, page in enumerate(pdf_reader.pages):
+        try:
+            text = page.extract_text()
+            if text and text.strip():
+                yield (page_num, text)
+        except Exception as e:
+            logger.warning(f"Failed to extract text from page {page_num}: {e}")
+            continue
+        
+        # Small delay to prevent CPU spikes
+        if page_num % 10 == 0:
+            await asyncio.sleep(0.01)
+
+
+async def extract_pdf_text_streaming(file_content: bytes) -> tuple[str, int]:
+    """
+    Extract text from PDF using streaming approach.
     
     Returns:
         Tuple of (extracted_text, page_count)
     """
-    pdf_reader = PyPDF2.PdfReader(io.BytesIO(file_content))
-    page_count = len(pdf_reader.pages)
-    
     text_parts = []
-    for page_num, page in enumerate(pdf_reader.pages):
-        # Check CPU and add delay if needed
-        if page_num % 5 == 0 and page_num > 0:  # Every 5 pages
-            if cpu_monitor.should_pause():
-                await cpu_monitor.wait_for_cpu()
-            else:
-                # Add small delay to prevent CPU spike
-                delay = cpu_monitor.get_throttle_delay(0.05)
-                await asyncio.sleep(delay)
-        
-        text = page.extract_text()
-        if text:
-            text_parts.append(text)
+    page_count = 0
+    
+    async for page_num, page_text in stream_pdf_pages(file_content):
+        text_parts.append(page_text)
+        page_count = page_num + 1
     
     return "\n\n".join(text_parts), page_count
 
@@ -172,7 +185,7 @@ async def process_document(ctx: dict, document_id: str, user_id: str) -> dict[st
             
             # Only extract if not already done
             if not document.extracted_text:
-                extracted_text, page_count = await extract_pdf_text(file_content)
+                extracted_text, page_count = await extract_pdf_text_streaming(file_content)
                 word_count = len(extracted_text.split())
                 
                 async with get_db_session() as db:
@@ -212,11 +225,15 @@ async def process_document(ctx: dict, document_id: str, user_id: str) -> dict[st
             from arq.connections import RedisSettings
             redis = await create_pool(RedisSettings.from_dsn(settings.redis_url))
             
+            # Use a timestamp-based job ID to avoid conflicts with failed jobs
+            import time
+            embed_job_id = f"embed:{document_id}:{int(time.time())}"
+            
             await redis.enqueue_job(
                 "generate_document_embeddings",
                 document_id,
                 user_id,
-                _job_id=f"embed:{document_id}",
+                _job_id=embed_job_id,
                 _defer_by=1,  # Start after 1 second
                 _queue_name="doculearn:queue"
             )

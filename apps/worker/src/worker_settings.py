@@ -5,7 +5,6 @@ from arq.connections import RedisSettings
 
 from src.chat.processor import process_chat_message
 from src.common.config import get_settings
-from src.common.cpu_monitor import cpu_monitor
 from src.common.database import close_db, init_db
 from src.common.logger import logger
 from src.document.processor import process_document
@@ -68,7 +67,7 @@ async def retry_failed_jobs(ctx):
                                     await redis.delete(key.decode())
                                     
                                     # Re-enqueue
-                                    job = await redis.enqueue_job(
+                                    await redis.enqueue_job(
                                         "process_document",
                                         document_id,
                                         user_id,
@@ -92,8 +91,7 @@ async def startup(ctx):
     # Initialize database connection
     await init_db()
     
-    # Start CPU monitoring
-    await cpu_monitor.start()
+    # CPU monitoring removed for production
     
     # Check for failed jobs and optionally retry them
     if settings.retry_failed_on_startup:
@@ -106,8 +104,7 @@ async def shutdown(ctx):
     """Cleanup worker resources on shutdown."""
     logger.info("Shutting down DocuLearn worker...")
     
-    # Stop CPU monitoring
-    await cpu_monitor.stop()
+    # CPU monitoring removed for production
     
     # Close database connection
     await close_db()
