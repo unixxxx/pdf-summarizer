@@ -59,5 +59,10 @@ export const FolderActions = createActionGroup({
       from: string;
     }>(),
     'Move document to unfiled failure event': props<{ error: string }>(),
+    
+    // Bulk update folder counts
+    'Update folder counts after organization': props<{
+      folderUpdates: Array<{ folderId: string; incrementBy: number }>;
+    }>(),
   },
 });

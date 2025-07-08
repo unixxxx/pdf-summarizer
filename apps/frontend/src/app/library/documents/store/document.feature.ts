@@ -9,7 +9,7 @@ import {
 export const documentFeature = createFeature({
   name: 'document',
   reducer: documentReducer,
-  extraSelectors: ({ selectDocuments, selectPagination }) => ({
+  extraSelectors: ({ selectDocuments, selectPagination, selectCurrentCriteria }) => ({
     // Document list selectors
     selectDocumentList: createSelector(
       selectDocuments,

@@ -213,8 +213,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 
         <!-- Unfiled Documents -->
         <a
-          routerLink="/library"
-          [queryParams]="{ folderId: 'unfiled' }"
+          routerLink="/library/unfiled"
           routerLinkActive="bg-muted text-primary-600"
           [class.w-full]="!uiStore.sidebarCollapsed()"
           [class.w-10]="uiStore.sidebarCollapsed()"
@@ -564,10 +563,10 @@ export class FolderSidebar {
     event.preventDefault();
     event.stopPropagation();
     this.dragOverArchive.set(false);
-    
+
     const documentId = event.dataTransfer?.getData('documentId');
     const filename = event.dataTransfer?.getData('text/plain') || 'Document';
-    
+
     if (documentId) {
       // We'll create a minimal document object to pass to the delete modal
       // The modal will show the filename we have
@@ -578,7 +577,7 @@ export class FolderSidebar {
             documentId: documentId,
             filename: filename,
             folderId: event.dataTransfer?.getData('folderId') || undefined,
-          } as DocumentListItem
+          } as DocumentListItem,
         })
       );
     }
@@ -606,10 +605,10 @@ export class FolderSidebar {
     event.preventDefault();
     event.stopPropagation();
     this.dragOverUnfiled.set(false);
-    
+
     const documentId = event.dataTransfer?.getData('documentId');
     const currentFolderId = event.dataTransfer?.getData('folderId');
-    
+
     if (documentId && currentFolderId) {
       // Move document to unfiled (remove from current folder)
       this.store.dispatch(

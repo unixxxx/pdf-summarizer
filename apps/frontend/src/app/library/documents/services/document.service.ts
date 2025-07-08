@@ -95,6 +95,57 @@ export class DocumentService {
     }>(`${this.baseUrl}/${documentId}/retry`, {});
   }
 
+  /**
+   * Get suggestions for organizing unfiled documents into folders based on tag similarity
+   */
+  getOrganizationSuggestions(): Observable<{
+    suggestions: Array<{
+      document_id: string;
+      document_name: string;
+      document_tags: string[];
+      suggested_folder_id: string;
+      suggested_folder_name: string;
+      folder_tags: string[];
+      similarity_score: number;
+      matching_tags: string[];
+    }>;
+    total_unfiled: number;
+    total_with_tags: number;
+  }> {
+    return this.http.get<{
+      suggestions: Array<{
+        document_id: string;
+        document_name: string;
+        document_tags: string[];
+        suggested_folder_id: string;
+        suggested_folder_name: string;
+        folder_tags: string[];
+        similarity_score: number;
+        matching_tags: string[];
+      }>;
+      total_unfiled: number;
+      total_with_tags: number;
+    }>(`${this.baseUrl}/organize/suggestions`);
+  }
+
+  /**
+   * Apply document organization by moving selected documents to their assigned folders
+   */
+  applyOrganization(assignments: Array<{
+    document_id: string;
+    folder_id: string;
+  }>): Observable<{
+    message: string;
+    organized_count: number;
+    errors?: string[];
+  }> {
+    return this.http.post<{
+      message: string;
+      organized_count: number;
+      errors?: string[];
+    }>(`${this.baseUrl}/organize/apply`, assignments);
+  }
+
   private buildParams(criteria?: DocumentSearchCriteria): HttpParams {
     let params = new HttpParams();
 

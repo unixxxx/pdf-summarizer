@@ -1,9 +1,5 @@
 import { inject } from '@angular/core';
-import {
-  ActivatedRoute,
-  ActivatedRouteSnapshot,
-  Routes,
-} from '@angular/router';
+import { ActivatedRouteSnapshot, Routes } from '@angular/router';
 import { Store } from '@ngrx/store';
 import { ArchiveActions } from './archive/store/archive.actions';
 import { DocumentActions } from './documents/store/document.actions';

@@ -398,6 +398,36 @@ export const folderReducer = createReducer<FolderState>(
         AsyncDataItemState.LOADED
       ),
     };
+  }),
+
+  // Handle successful document organization
+  on(DocumentActions.applyOrganizationSuccessEvent, (state, { assignments }) => {
+    const currentData = state.folder.data;
+    
+    // Count documents going to each folder
+    const folderCounts = new Map<string, number>();
+    assignments.forEach(assignment => {
+      const count = folderCounts.get(assignment.folder_id) || 0;
+      folderCounts.set(assignment.folder_id, count + 1);
+    });
+    
+    // Update counts for each affected folder and its ancestors
+    let updatedFolders = [...currentData.folders];
+    folderCounts.forEach((count, folderId) => {
+      updatedFolders = updateDocumentCountInAncestors(updatedFolders, folderId, count);
+    });
+    
+    return {
+      ...state,
+      folder: wrapAsAsyncDataItem(
+        {
+          ...currentData,
+          unfiledCount: Math.max(0, currentData.unfiledCount - assignments.length),
+          folders: updatedFolders,
+        },
+        AsyncDataItemState.LOADED
+      ),
+    };
   })
 );
 

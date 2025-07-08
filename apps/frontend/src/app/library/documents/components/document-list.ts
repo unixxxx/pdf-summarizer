@@ -30,6 +30,7 @@ import { FolderActions } from '../../folder/store/folder.actions';
       <app-document-search
         (uploadClick)="openUploadDialog()"
         (searchChange)="onSearchChange($event)"
+        (organizeClick)="openOrganizeDialog()"
       />
 
       <!-- Document Grid -->
@@ -203,6 +204,10 @@ export class DocumentList {
 
   openUploadDialog() {
     this.store.dispatch(UploadActions.openUploadDialogCommand());
+  }
+
+  openOrganizeDialog() {
+    this.store.dispatch(DocumentActions.openOrganizeDialogCommand());
   }
 
   onDocumentDragStart(item: DocumentListItem) {

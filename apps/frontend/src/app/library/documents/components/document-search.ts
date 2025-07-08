@@ -67,6 +67,28 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
           />
         </div>
 
+        <!-- Organize Button -->
+        <button
+          (click)="organizeClick.emit()"
+          class="px-4 sm:px-6 py-2 bg-accent-600 text-white rounded-lg font-medium hover:shadow-lg transform hover:scale-[1.02] transition-all flex items-center gap-2"
+          title="Organize unfiled documents into folders based on tags"
+        >
+          <svg
+            class="w-5 h-5"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+              d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"
+            />
+          </svg>
+          <span class="hidden sm:inline">Organize</span>
+        </button>
+
         <!-- Upload Button -->
         <button
           (click)="uploadClick.emit()"
@@ -112,6 +134,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 export class DocumentSearch {
   uploadClick = output<void>();
   searchChange = output<string>();
+  organizeClick = output<void>();
 
   protected uiStore = inject(UIStore);
   private destroyRef = inject(DestroyRef);

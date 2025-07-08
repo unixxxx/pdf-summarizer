@@ -18,13 +18,14 @@ const initialDocumentState: DocumentState = {
     total: 0,
     hasMore: false,
   },
+  currentCriteria: undefined,
 };
 
 export const documentReducer = createReducer(
   initialDocumentState,
 
   // Load documents
-  on(DocumentActions.fetchDocumentsCommand, (state) => ({
+  on(DocumentActions.fetchDocumentsCommand, (state, { criteria }) => ({
     ...state,
     documents: {
       ...state.documents,
@@ -35,6 +36,7 @@ export const documentReducer = createReducer(
       ...state.pagination,
       offset: 0,
     },
+    currentCriteria: criteria,
   })),
 
   on(
@@ -350,6 +352,69 @@ export const documentReducer = createReducer(
           },
         };
       }
+    }
+  ),
+
+  // Handle successful document organization
+  on(
+    DocumentActions.applyOrganizationSuccessEvent,
+    (state, { assignments }) => {
+      // Create a map of document IDs to their new folder IDs
+      const assignmentMap = new Map(
+        assignments.map(a => [a.document_id, a.folder_id])
+      );
+
+      // Update documents with their new folder IDs
+      const updatedData = state.documents.data?.map(doc => {
+        const newFolderId = assignmentMap.get(doc.documentId);
+        if (newFolderId) {
+          return { ...doc, folderId: newFolderId };
+        }
+        return doc;
+      }) || [];
+
+      // Determine current view from criteria
+      const criteria = state.currentCriteria;
+      const viewingUnfiled = criteria?.unfiled === true;
+      const viewingSpecificFolder = criteria?.folder_id !== undefined;
+      const currentFolderId = criteria?.folder_id;
+
+      // Filter documents based on current view
+      let filteredData = updatedData;
+      let removedCount = 0;
+
+      if (viewingUnfiled) {
+        // If viewing unfiled, remove all organized documents
+        const organizedDocIds = new Set(assignments.map(a => a.document_id));
+        filteredData = updatedData.filter(doc => !organizedDocIds.has(doc.documentId));
+        removedCount = assignments.length;
+      } else if (viewingSpecificFolder) {
+        // If viewing a specific folder, only remove documents that were moved to OTHER folders
+        const beforeCount = filteredData.length;
+        filteredData = updatedData.filter(doc => {
+          const newFolderId = assignmentMap.get(doc.documentId);
+          if (!newFolderId) {
+            // Document wasn't part of the organization, keep it
+            return true;
+          }
+          // Document was organized - keep it only if it's staying in or moving to the current folder
+          return newFolderId === currentFolderId;
+        });
+        removedCount = beforeCount - filteredData.length;
+      }
+      // If viewing all documents, keep all documents (just update their folder IDs)
+
+      return {
+        ...state,
+        documents: {
+          ...state.documents,
+          data: filteredData,
+        },
+        pagination: {
+          ...state.pagination,
+          total: Math.max(0, state.pagination.total - removedCount),
+        },
+      };
     }
   )
 );

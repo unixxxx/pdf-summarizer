@@ -1,4 +1,4 @@
-import { createActionGroup, props } from '@ngrx/store';
+import { createActionGroup, emptyProps, props } from '@ngrx/store';
 import { DocumentListItem } from './state/document';
 import { DocumentSearchCriteria } from '../dtos/document-search-criteria';
 import { ExportFormat } from '../dtos/export-format';
@@ -83,5 +83,24 @@ export const DocumentActions = createActionGroup({
       documentId: string;
       error: string;
     }>(),
+
+    // Organize documents
+    'Open Organize Dialog Command': emptyProps(),
+    'Apply Organization Command': props<{ 
+      assignments: Array<{
+        document_id: string;
+        folder_id: string;
+      }>;
+    }>(),
+    'Apply Organization Success Event': props<{
+      message: string;
+      organized_count: number;
+      errors?: string[];
+      assignments: Array<{
+        document_id: string;
+        folder_id: string;
+      }>;
+    }>(),
+    'Apply Organization Failure Event': props<{ error: string }>(),
   },
 });

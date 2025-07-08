@@ -10,6 +10,7 @@ from ..auth.dependencies import CurrentUserDep
 from ..common.exceptions import NotFoundException
 from ..database.session import get_db
 from .dependencies import DocumentServiceDep
+from .organize_service import DocumentOrganizeService
 from .schemas import (
     DocumentDetailResponse,
     DocumentsListResponse,
@@ -172,4 +173,65 @@ async def retry_document_processing(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(e),
+        )
+
+
+@router.get("/organize/suggestions")
+async def get_organization_suggestions(
+    current_user: CurrentUserDep,
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """
+    Get suggestions for organizing unfiled documents into folders based on tag similarity.
+    
+    This endpoint uses vector embeddings to find the best folder matches for documents
+    based on their tags.
+    
+    Returns:
+        Organization suggestions with similarity scores
+    """
+    organize_service = DocumentOrganizeService()
+    
+    try:
+        result = await organize_service.get_organization_suggestions(
+            user_id=current_user.id,
+            db=db
+        )
+        return result
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get organization suggestions: {str(e)}"
+        )
+
+
+@router.post("/organize/apply")
+async def apply_organization(
+    current_user: CurrentUserDep,
+    assignments: list[dict[str, str]],
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """
+    Apply document organization by moving selected documents to their assigned folders.
+    
+    Args:
+        assignments: List of document-folder assignments
+            [{"document_id": "...", "folder_id": "..."}, ...]
+        
+    Returns:
+        Organization results
+    """
+    organize_service = DocumentOrganizeService()
+    
+    try:
+        result = await organize_service.apply_organization(
+            user_id=current_user.id,
+            assignments=assignments,
+            db=db
+        )
+        return result
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to apply organization: {str(e)}"
         )

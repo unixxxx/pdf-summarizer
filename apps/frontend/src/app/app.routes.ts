@@ -16,7 +16,6 @@ import { archiveFeature } from './library/archive/store/archive.feature';
 import { ArchiveEffects } from './library/archive/store/archive.effects';
 import { documentFeature } from './library/documents/store/document.feature';
 import { DocumentEffects } from './library/documents/store/document.effects';
-import { DocumentActions } from './library/documents/store/document.actions';
 
 export const routes: Routes = [
   {

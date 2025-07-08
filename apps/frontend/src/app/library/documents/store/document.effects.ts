@@ -20,6 +20,7 @@ import { ModalService } from '../../../core/services/modal';
 import { ConfirmDialog } from '../../../shared/components/confirm-dialog';
 import { WebSocketService } from '../../../core/services/websocket.service';
 import { DocumentProcessingEvent } from '../dtos/websocket-events';
+import { OrganizeDialog, OrganizeDialogResult } from '../components/organize-dialog';
 
 @Injectable()
 export class DocumentEffects {
@@ -253,6 +254,94 @@ export class DocumentEffects {
           })
         )
       )
+    )
+  );
+
+  // Open organize dialog
+  openOrganizeDialog$ = createEffect(() =>
+    this.actions$.pipe(
+      ofType(DocumentActions.openOrganizeDialogCommand),
+      switchMap(() =>
+        // First get suggestions
+        this.documentService.getOrganizationSuggestions().pipe(
+          switchMap((response) => {
+            return from(
+              this.modalService.create<OrganizeDialogResult>({
+                component: OrganizeDialog,
+                inputs: {
+                  suggestions: response.suggestions,
+                  total_unfiled: response.total_unfiled,
+                  total_with_tags: response.total_with_tags,
+                },
+                cssClass: 'organize-modal',
+                backdropDismiss: true,
+                keyboardClose: true,
+              })
+            ).pipe(
+              switchMap((modalRef) =>
+                from(modalRef.onDidDismiss()).pipe(
+                  map((result) => {
+                    if (result.data?.organize && result.data.selectedAssignments.length > 0) {
+                      return DocumentActions.applyOrganizationCommand({
+                        assignments: result.data.selectedAssignments,
+                      });
+                    }
+                    // No action needed when modal is cancelled
+                    return { type: '@ngrx/no-op' };
+                  })
+                )
+              )
+            );
+          }),
+          catchError((error) => {
+            this.uiStore.showError(error.message || 'Failed to get organization suggestions');
+            return of({ type: '@ngrx/no-op' });
+          })
+        )
+      )
+    )
+  );
+
+  // Apply organization
+  applyOrganization$ = createEffect(() =>
+    this.actions$.pipe(
+      ofType(DocumentActions.applyOrganizationCommand),
+      switchMap(({ assignments }) =>
+        this.documentService.applyOrganization(assignments).pipe(
+          map((response) => {
+            this.uiStore.showSuccess(
+              `Successfully organized ${response.organized_count} documents`
+            );
+            if (response.errors && response.errors.length > 0) {
+              console.warn('Organization errors:', response.errors);
+            }
+            return DocumentActions.applyOrganizationSuccessEvent({
+              ...response,
+              assignments
+            });
+          }),
+          catchError((error) => {
+            this.uiStore.showError(error.message || 'Failed to organize documents');
+            return of(
+              DocumentActions.applyOrganizationFailureEvent({
+                error: error.message || 'Failed to organize documents',
+              })
+            );
+          })
+        )
+      )
+    )
+  );
+
+  // Refresh documents after successful organization when viewing a specific folder
+  // This is needed to show documents that were organized INTO the current folder
+  refreshAfterOrganize$ = createEffect(() =>
+    this.actions$.pipe(
+      ofType(DocumentActions.applyOrganizationSuccessEvent),
+      filter((action) => action.organized_count > 0),
+      withLatestFrom(this.store.select(documentFeature.selectCurrentCriteria)),
+      filter(([, criteria]) => !!criteria?.folder_id), // Only refresh when viewing a specific folder
+      map(([, criteria]) => DocumentActions.fetchDocumentsCommand({ criteria: criteria || {} }))
     )
   );
 
