@@ -1,5 +1,6 @@
 """Document domain service following DDD principles."""
 
+import logging
 from uuid import UUID
 
 from fastapi.responses import Response
@@ -8,6 +9,8 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..common.exceptions import NotFoundException
+from ..config import get_settings
+from ..search import SearchQuery, SearchService
 from ..tag.schemas import TagResponse
 from .export_service import DocumentExporter
 from .schemas import (
@@ -17,9 +20,16 @@ from .schemas import (
     ExportFormat,
 )
 
+logger = logging.getLogger(__name__)
+
 
 class DocumentService:
     """Service for managing document lifecycle."""
+    
+    def __init__(self):
+        """Initialize document service."""
+        self.search_service = None
+        self.settings = get_settings()
 
     async def get_document(
         self,
@@ -215,13 +225,51 @@ class DocumentService:
             # Get documents not in any folder
             query = query.where(Document.folder_id.is_(None))
 
-        # Apply search filter
+        # Use intelligent search if search term provided
         if search:
-            search_term = f"%{search}%"
-            query = query.where(
-                (Document.filename.ilike(search_term))
-                | (Document.extracted_text.ilike(search_term))
+            # Initialize search service if needed
+            if self.search_service is None:
+                # This should not happen if app startup loaded the model
+                # But provide fallback for safety
+                logger.warning("Search service not provided, creating new instance")
+                self.search_service = SearchService()
+            
+            # Create search query
+            search_query = SearchQuery(
+                query=search,
+                user_id=user_id,
+                folder_id=folder_id,
+                unfiled=unfiled,
+                limit=limit,
+                offset=offset,
+                include_archived=False,
+                min_relevance_score=0.3
             )
+            
+            # Perform intelligent search
+            try:
+                search_results, metrics = await self.search_service.search(
+                    search_query, db
+                )
+                
+                logger.info(
+                    f"Intelligent search completed: {metrics.results_count} results "
+                    f"in {metrics.total_time_ms:.2f}ms"
+                )
+                
+                # Convert search results to document list response
+                return await self._convert_search_results_to_response(
+                    search_results, db, limit, offset
+                )
+                
+            except Exception as e:
+                logger.error(f"Intelligent search failed, falling back to basic search: {e}")
+                # Fallback to basic search
+                search_term = f"%{search}%"
+                query = query.where(
+                    (Document.filename.ilike(search_term))
+                    | (Document.extracted_text.ilike(search_term))
+                )
 
         # Order by creation date
         query = query.order_by(Document.created_at.desc())
@@ -458,3 +506,90 @@ class DocumentService:
             }
         finally:
             await redis.close()
+    
+    async def _convert_search_results_to_response(
+        self,
+        search_results: list,
+        db: AsyncSession,
+        limit: int,
+        offset: int
+    ) -> DocumentsListResponse:
+        """Convert search results to document list response."""
+        from sqlalchemy.orm import selectinload
+        
+        if not search_results:
+            return DocumentsListResponse(
+                items=[], 
+                total=0, 
+                limit=limit, 
+                offset=offset,
+                has_more=False
+            )
+        
+        # Get document IDs from search results
+        doc_ids = [result.document_id for result in search_results]
+        
+        # Fetch full document data with relationships
+        query = (
+            select(Document)
+            .options(
+                selectinload(Document.tags),
+                selectinload(Document.summaries),
+                selectinload(Document.folder)
+            )
+            .where(Document.id.in_(doc_ids))
+        )
+        
+        result = await db.execute(query)
+        documents = result.scalars().all()
+        
+        # Create a map for quick lookup
+        doc_map = {doc.id: doc for doc in documents}
+        
+        # Build response items in search result order
+        items = []
+        for search_result in search_results:
+            doc = doc_map.get(search_result.document_id)
+            if not doc:
+                continue
+            
+            # Use search snippet if available, otherwise create summary
+            summary_text = search_result.snippet
+            if not summary_text and doc.summaries:
+                latest_summary = max(doc.summaries, key=lambda s: s.created_at)
+                summary_text = latest_summary.summary_text[:200] + "..."
+            elif not summary_text and doc.extracted_text:
+                summary_text = doc.extracted_text[:200] + "..."
+            
+            items.append(
+                DocumentListItemResponse(
+                    id=doc.id,
+                    document_id=doc.id,
+                    filename=doc.filename,
+                    file_size=doc.file_size,
+                    summary=summary_text or "",
+                    created_at=doc.created_at,
+                    word_count=doc.word_count or 0,
+                    tags=[
+                        TagResponse(
+                            id=tag.id,
+                            name=tag.name,
+                            slug=tag.slug,
+                            color=tag.color,
+                        )
+                        for tag in doc.tags
+                    ],
+                    status=doc.status,
+                    folder_id=doc.folder_id,
+                    error_message=doc.error_message,
+                )
+            )
+        
+        total = len(search_results)
+        return DocumentsListResponse(
+            items=items,
+            total=total,
+            limit=limit,
+            offset=offset,
+            has_more=(offset + limit) < total
+        )

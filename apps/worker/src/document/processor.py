@@ -27,7 +27,15 @@ async def stream_pdf_pages(file_content: bytes) -> AsyncGenerator[tuple[int, str
     Yields:
         Tuple of (page_number, page_text)
     """
-    pdf_reader = PyPDF2.PdfReader(io.BytesIO(file_content))
+    try:
+        pdf_reader = PyPDF2.PdfReader(io.BytesIO(file_content))
+    except PyPDF2.errors.PdfReadError as e:
+        logger.error(f"Invalid PDF file: {e}")
+        raise ValueError(f"File is not a valid PDF: {str(e)}")
+    except Exception as e:
+        logger.error(f"Failed to read PDF: {e}")
+        raise ValueError(f"Failed to process PDF: {str(e)}")
+    
     total_pages = len(pdf_reader.pages)
     
     for page_num, page in enumerate(pdf_reader.pages):
@@ -59,6 +67,28 @@ async def extract_pdf_text_streaming(file_content: bytes) -> tuple[str, int]:
         page_count = page_num + 1
     
     return "\n\n".join(text_parts), page_count
+
+
+async def extract_text_content(file_content: bytes, filename: str) -> tuple[str, int]:
+    """
+    Extract text from a text file.
+    
+    Returns:
+        Tuple of (extracted_text, page_count)
+    """
+    try:
+        # Try UTF-8 first
+        text = file_content.decode('utf-8')
+    except UnicodeDecodeError:
+        try:
+            # Fallback to Latin-1
+            text = file_content.decode('latin-1')
+        except Exception as e:
+            logger.warning(f"Failed to decode text file {filename}: {e}")
+            text = file_content.decode('utf-8', errors='ignore')
+    
+    # For text files, page_count is always 1
+    return text, 1
 
 
 async def download_file(storage_path: str) -> bytes:
@@ -177,15 +207,24 @@ async def process_document(ctx: dict, document_id: str, user_id: str) -> dict[st
             file_content = await download_file(document.storage_path)
             
             # 3. Extract text (35%)
+            # Determine file type based on extension
+            is_text_file = document.filename.lower().endswith(('.txt', '.text', '.md', '.markdown'))
+            
             await reporter.report_progress(
                 ProgressStage.EXTRACTING, 
                 0.25, 
-                "Extracting text from PDF"
+                f"Extracting text from {'text file' if is_text_file else 'PDF'}"
             )
             
             # Only extract if not already done
             if not document.extracted_text:
-                extracted_text, page_count = await extract_pdf_text_streaming(file_content)
+                if is_text_file:
+                    # Extract text from text file
+                    extracted_text, page_count = await extract_text_content(file_content, document.filename)
+                else:
+                    # Extract text from PDF
+                    extracted_text, page_count = await extract_pdf_text_streaming(file_content)
+                
                 word_count = len(extracted_text.split())
                 
                 async with get_db_session() as db:
@@ -262,6 +301,27 @@ async def process_document(ctx: dict, document_id: str, user_id: str) -> dict[st
                 "page_count": document.page_count,
                 "next_task": "generate_document_embeddings"
             }
+            
+        except ValueError as e:
+            # Specific error for file format issues
+            logger.error(
+                "Document format error",
+                document_id=document_id,
+                error=str(e)
+            )
+            
+            # Update document status to failed
+            async with get_db_session() as db:
+                result = await db.execute(
+                    select(Document).where(Document.id == document_id)
+                )
+                document = result.scalar_one_or_none()
+                if document:
+                    document.status = DocumentStatus.FAILED
+                    document.error_message = str(e)
+                    await db.commit()
+            
+            raise
             
         except Exception as e:
             logger.error(

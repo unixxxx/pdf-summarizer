@@ -54,6 +54,10 @@ class DocumentListItemResponse(BaseModel):
     status: DocumentStatus  # Document processing status
     folder_id: UUID | None = None
     error_message: str | None = None  # Error message if processing failed
+    
+    # Search metadata (optional)
+    relevance_score: float | None = None
+    search_explanation: str | None = None
 
     class Config:
         from_attributes = True

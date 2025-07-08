@@ -2,8 +2,9 @@
 
 import logging
 import uuid
+from collections.abc import AsyncGenerator
 from pathlib import Path
-from typing import Any, AsyncGenerator
+from typing import Any
 from uuid import UUID
 
 import aioboto3

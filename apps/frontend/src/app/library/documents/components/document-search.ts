@@ -4,10 +4,14 @@ import {
   ChangeDetectionStrategy,
   signal,
   output,
+  DestroyRef,
 } from '@angular/core';
 
 import { FormsModule } from '@angular/forms';
 import { UIStore } from '../../../shared/ui.store';
+import { Subject } from 'rxjs';
+import { debounceTime, distinctUntilChanged } from 'rxjs/operators';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 
 @Component({
   selector: 'app-document-search',
@@ -110,20 +114,36 @@ export class DocumentSearch {
   searchChange = output<string>();
 
   protected uiStore = inject(UIStore);
+  private destroyRef = inject(DestroyRef);
 
   // Local state
   protected searchQuery = signal('');
   protected isSearching = signal(false);
+  
+  // Search debouncing
+  private searchSubject = new Subject<string>();
+
+  constructor() {
+    // Set up debounced search
+    // This prevents excessive API calls while the user is typing
+    this.searchSubject.pipe(
+      debounceTime(300), // Wait 300ms after user stops typing
+      distinctUntilChanged(), // Only emit if value actually changed
+      takeUntilDestroyed(this.destroyRef) // Automatically unsubscribe on component destroy
+    ).subscribe(query => {
+      this.searchChange.emit(query);
+    });
+  }
 
   updateSearch(query: string) {
     this.searchQuery.set(query);
     this.isSearching.set(query.length > 0);
-    this.searchChange.emit(query);
+    this.searchSubject.next(query);
   }
 
   clearFilters() {
     this.searchQuery.set('');
     this.isSearching.set(false);
-    this.searchChange.emit('');
+    this.searchSubject.next('');
   }
 }

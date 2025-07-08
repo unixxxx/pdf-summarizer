@@ -26,8 +26,8 @@ settings = get_settings()
 class ChunkingStrategy:
     """Document chunking configuration."""
 
-    CHUNK_SIZE = 1000
-    CHUNK_OVERLAP = 200
+    CHUNK_SIZE = 1500  # Increased for fewer chunks and faster processing
+    CHUNK_OVERLAP = 300  # Proportionally increased overlap
     SEPARATORS = ["\n\n", "\n", ". ", " ", ""]
 
 
@@ -264,26 +264,13 @@ async def generate_document_embeddings(
             logger.info("Starting to store embeddings in database", document_id=document_id)
 
             async with get_db_session() as db:
-                # Delete existing chunks
-                await db.execute(
-                    delete(DocumentChunk).where(
-                        DocumentChunk.document_id == document_id
-                    )
+                # Use bulk insert for better performance
+                from .bulk_operations import bulk_insert_chunks
+                
+                chunks_inserted = await bulk_insert_chunks(
+                    db, document_id, embeddings, batch_size=50
                 )
-
-                # Create new chunks
-                for emb_data in embeddings:
-                    chunk_data = emb_data["chunk"]
-                    embedding = emb_data["embedding"]
-
-                    chunk = DocumentChunk(
-                        document_id=document_id,
-                        chunk_text=chunk_data["text"],
-                        chunk_index=chunk_data["chunk_index"],
-                        embedding=np.array(embedding),  # pgvector expects numpy array
-                    )
-                    db.add(chunk)
-
+                
                 # Keep document status as PROCESSING (summary generation is next)
                 await db.execute(
                     update(Document)
@@ -292,7 +279,11 @@ async def generate_document_embeddings(
                 )
 
                 await db.commit()
-                logger.info("Embeddings stored successfully", document_id=document_id)
+                logger.info(
+                    "Embeddings stored successfully", 
+                    document_id=document_id,
+                    chunks_inserted=chunks_inserted
+                )
 
             # 5. Enqueue summary generation task
             logger.info("Enqueuing summary generation", document_id=document_id)

@@ -29,6 +29,7 @@ from .flashcard.async_router import router as flashcard_router
 from .folder.router import router as folder_router
 from .monitoring.router import health_router, monitoring_router
 from .quiz.async_router import router as quiz_router
+from .search import SearchService
 from .storage.router import router as storage_router
 from .summarization.async_router import router as summarization_router
 from .tag.router import router as tag_router
@@ -73,6 +74,20 @@ async def lifespan(app: FastAPI):
     
     # LLM is now handled by the worker service
     logger.info("LLM processing is handled by the worker service")
+    
+    # Preload ML models for search
+    if settings.enable_reranking:
+        try:
+            logger.info("Preloading sentence transformer model for search reranking...")
+            # This will initialize the global reranker instance
+            search_service = SearchService()
+            logger.info("Sentence transformer model loaded successfully")
+            # Store in app state if needed for monitoring
+            app.state.search_service = search_service
+        except Exception as e:
+            logger.error(f"Failed to load sentence transformer model: {e}")
+            # Continue without reranking rather than failing startup
+            logger.warning("Search reranking disabled due to model loading failure")
 
     # Check OAuth configuration
     if settings.google_oauth_enabled:

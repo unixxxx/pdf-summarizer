@@ -159,12 +159,14 @@ export class DocumentList {
 
   onSearchChange(query: string) {
     this.searchQuery = query;
-    DocumentActions.fetchDocumentsCommand({
-      criteria: {
-        search: this.searchQuery || undefined,
-        folder_id: this.currentFolderId,
-      },
-    });
+    this.store.dispatch(
+      DocumentActions.fetchDocumentsCommand({
+        criteria: {
+          search: this.searchQuery || undefined,
+          folder_id: this.currentFolderId,
+        },
+      })
+    );
   }
 
   viewDocument(item: DocumentListItem) {

@@ -15,7 +15,7 @@ from sqlalchemy import (
     func,
 )
 from sqlalchemy import Enum as SQLEnum
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import TSVECTOR, UUID
 from sqlalchemy.orm import relationship
 
 from .base import Base
@@ -47,6 +47,7 @@ class Document(Base):
     created_at = Column(DateTime, nullable=False, default=func.now(), index=True)  # Index for sorting
     updated_at = Column(DateTime, nullable=False, default=func.now(), onupdate=func.now())
     archived_at = Column(DateTime, nullable=True, index=True)  # Soft delete timestamp
+    search_vector = Column(TSVECTOR, nullable=True)  # Full-text search vector
 
     # Relationships
     user = relationship("User", back_populates="documents")
@@ -77,6 +78,7 @@ class DocumentChunk(Base):
     embedding = Column(Vector, nullable=True)  # Flexible dimension for any embedding model
     chunk_metadata = Column(Text, nullable=True)  # JSON metadata
     created_at = Column(DateTime, nullable=False, default=func.now())
+    search_vector = Column(TSVECTOR, nullable=True)  # Full-text search vector
 
     # Relationships
     document = relationship("Document", back_populates="chunks")

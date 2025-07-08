@@ -31,7 +31,7 @@ class WorkerSettings(BaseSettings):
     embedding_model: str = Field(default="text-embedding-ada-002", env="EMBEDDING_MODEL")
     
     # Worker settings
-    max_jobs: int = Field(default=2, env="MAX_JOBS")  # Reduced from 10 to prevent CPU overload
+    max_jobs: int = Field(default=4, env="MAX_JOBS")  # Balanced for CPU and I/O operations
     job_timeout: int = Field(default=600, env="JOB_TIMEOUT")  # 10 minutes
     health_check_interval: int = Field(default=30, env="HEALTH_CHECK_INTERVAL")
     retry_jobs: bool = Field(default=True, env="RETRY_JOBS")
@@ -39,9 +39,9 @@ class WorkerSettings(BaseSettings):
     retry_failed_on_startup: bool = Field(default=False, env="RETRY_FAILED_ON_STARTUP")
     
     # Performance settings
-    cpu_throttle_delay: float = Field(default=0.1, env="CPU_THROTTLE_DELAY")  # Delay between intensive operations
-    batch_size: int = Field(default=5, env="BATCH_SIZE")  # Process embeddings in smaller batches
-    embedding_concurrency: int = Field(default=2, env="EMBEDDING_CONCURRENCY")  # Limit concurrent embedding operations
+    cpu_throttle_delay: float = Field(default=0.05, env="CPU_THROTTLE_DELAY")  # Reduced delay for faster processing
+    batch_size: int = Field(default=10, env="BATCH_SIZE")  # Larger batches for better throughput
+    embedding_concurrency: int = Field(default=4, env="EMBEDDING_CONCURRENCY")  # More concurrent operations
     use_streaming: bool = Field(default=True, env="USE_STREAMING")  # Enable streaming processing for better memory usage
     
     # S3 configuration

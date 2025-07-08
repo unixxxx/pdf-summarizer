@@ -38,6 +38,10 @@ class Settings(BaseSettings):
         default="http://localhost:11434", env="OLLAMA_BASE_URL"
     )
     ollama_model: str = Field(default="llama2", env="OLLAMA_MODEL")
+    # Ollama embedding model - must produce 1536-dimensional vectors to match DB schema
+    # Compatible model: gte-qwen2-1.5b-instruct-embed-f16 (1536 dimensions)
+    # Other models have different dimensions: nomic-embed-text (768), mxbai-embed-large (1024)
+    ollama_embedding_model: str = Field(default="gte-qwen2-1.5b-instruct-embed-f16", env="OLLAMA_EMBEDDING_MODEL")
 
     # Database Configuration
     database_url: str = Field(
@@ -132,6 +136,17 @@ class Settings(BaseSettings):
     redis_url: str = Field(default="redis://localhost:6379/0", env="REDIS_URL")
     cache_ttl: int = Field(default=3600, env="CACHE_TTL")  # Default 1 hour
     cache_enabled: bool = Field(default=True, env="CACHE_ENABLED")
+    
+    # Search Configuration
+    search_cache_ttl: int = Field(default=300, env="SEARCH_CACHE_TTL")  # 5 minutes
+    max_search_results: int = Field(default=100, env="MAX_SEARCH_RESULTS")
+    reranker_model: str = Field(default="all-MiniLM-L6-v2", env="RERANKER_MODEL")
+    enable_reranking: bool = Field(default=True, env="ENABLE_RERANKING")
+    max_rerank_results: int = Field(default=30, env="MAX_RERANK_RESULTS")
+    
+    # Fuzzy Search Configuration (always enabled)
+    trigram_similarity_threshold: float = Field(default=0.25, env="TRIGRAM_SIMILARITY_THRESHOLD")  # Lower threshold for better typo tolerance
+    fuzzy_weight: float = Field(default=0.4, env="FUZZY_WEIGHT")  # Increased weight for better fuzzy matching
     
     # Aliases for backward compatibility
     @property

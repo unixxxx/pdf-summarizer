@@ -19,16 +19,6 @@ class DocuLearnException(HTTPException):
 
 
 
-class ServiceUnavailableError(DocuLearnException):
-    """Raised when a required service is unavailable."""
-
-    def __init__(self, service: str):
-        super().__init__(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=f"{service} service is currently unavailable",
-        )
-
-
 class StorageError(DocuLearnException):
     """Raised when storage operations fail."""
 
