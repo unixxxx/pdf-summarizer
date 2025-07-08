@@ -53,8 +53,7 @@ Unlike simple PDF summarizers, DocuLearn transforms any document into a comprehe
 
    # Create database and run migrations
    cd apps/backend
-   uv run python scripts/setup_db.py
-   uv run alembic upgrade head
+   uv run alembic upgrade head  # Apply migrations
    cd ../..
    ```
 

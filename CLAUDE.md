@@ -54,7 +54,6 @@ npx nx test frontend     # No tests configured yet
 # From apps/backend directory:
 uv run alembic upgrade head              # Apply migrations
 uv run alembic revision --autogenerate -m "description"  # Create migration
-uv run python scripts/setup_db.py        # Initial database setup
 ```
 
 ### Python Dependency Management (via Nx)
