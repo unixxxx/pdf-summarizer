@@ -1,6 +1,7 @@
 import { Injectable, inject } from '@angular/core';
 import { Actions, createEffect, ofType } from '@ngrx/effects';
 import { Store } from '@ngrx/store';
+import { tapResponse } from '@ngrx/operators';
 import {
   switchMap,
   map,
@@ -20,7 +21,8 @@ import { ModalService } from '../../../core/services/modal';
 import { ConfirmDialog } from '../../../shared/components/confirm-dialog';
 import { WebSocketService } from '../../../core/services/websocket.service';
 import { DocumentProcessingEvent } from '../dtos/websocket-events';
-import { OrganizeDialog, OrganizeDialogResult } from '../components/organize-dialog';
+import { OrganizeDialog } from '../components/organize-dialog';
+import { OrganizeDialogResult } from '../dtos/organize-dialog';
 
 @Injectable()
 export class DocumentEffects {
@@ -245,7 +247,9 @@ export class DocumentEffects {
             });
           }),
           catchError((error) => {
-            this.uiStore.showError(error.message || 'Failed to retry processing');
+            this.uiStore.showError(
+              error.message || 'Failed to retry processing'
+            );
             return of(
               DocumentActions.retryDocumentProcessingFailureEvent({
                 error: error.message || 'Failed to retry processing',
@@ -270,8 +274,8 @@ export class DocumentEffects {
                 component: OrganizeDialog,
                 inputs: {
                   suggestions: response.suggestions,
-                  total_unfiled: response.total_unfiled,
-                  total_with_tags: response.total_with_tags,
+                  totalUnfiled: response.total_unfiled,
+                  totalWithTags: response.total_with_tags,
                 },
                 cssClass: 'organize-modal',
                 backdropDismiss: true,
@@ -281,7 +285,10 @@ export class DocumentEffects {
               switchMap((modalRef) =>
                 from(modalRef.onDidDismiss()).pipe(
                   map((result) => {
-                    if (result.data?.organize && result.data.selectedAssignments.length > 0) {
+                    if (
+                      result.data?.organize &&
+                      result.data.selectedAssignments.length > 0
+                    ) {
                       return DocumentActions.applyOrganizationCommand({
                         assignments: result.data.selectedAssignments,
                       });
@@ -294,7 +301,9 @@ export class DocumentEffects {
             );
           }),
           catchError((error) => {
-            this.uiStore.showError(error.message || 'Failed to get organization suggestions');
+            this.uiStore.showError(
+              error.message || 'Failed to get organization suggestions'
+            );
             return of({ type: '@ngrx/no-op' });
           })
         )
@@ -303,34 +312,39 @@ export class DocumentEffects {
   );
 
   // Apply organization
-  applyOrganization$ = createEffect(() =>
-    this.actions$.pipe(
-      ofType(DocumentActions.applyOrganizationCommand),
-      switchMap(({ assignments }) =>
-        this.documentService.applyOrganization(assignments).pipe(
-          map((response) => {
-            this.uiStore.showSuccess(
-              `Successfully organized ${response.organized_count} documents`
-            );
-            if (response.errors && response.errors.length > 0) {
-              console.warn('Organization errors:', response.errors);
-            }
-            return DocumentActions.applyOrganizationSuccessEvent({
-              ...response,
-              assignments
-            });
-          }),
-          catchError((error) => {
-            this.uiStore.showError(error.message || 'Failed to organize documents');
-            return of(
-              DocumentActions.applyOrganizationFailureEvent({
-                error: error.message || 'Failed to organize documents',
-              })
-            );
-          })
+  applyOrganization$ = createEffect(
+    () =>
+      this.actions$.pipe(
+        ofType(DocumentActions.applyOrganizationCommand),
+        switchMap(({ assignments }) =>
+          this.documentService.applyOrganization(assignments).pipe(
+            tapResponse(
+              (response) => {
+                this.uiStore.showSuccess(
+                  `Successfully organized ${response.organized_count} documents`
+                );
+                this.store.dispatch(
+                  DocumentActions.applyOrganizationSuccessEvent({
+                    ...response,
+                    assignments,
+                  })
+                );
+              },
+              (error: Error) => {
+                this.uiStore.showError(
+                  error.message || 'Failed to organize documents'
+                );
+                this.store.dispatch(
+                  DocumentActions.applyOrganizationFailureEvent({
+                    error: error.message || 'Failed to organize documents',
+                  })
+                );
+              }
+            )
+          )
         )
-      )
-    )
+      ),
+    { dispatch: false }
   );
 
   // Refresh documents after successful organization when viewing a specific folder
@@ -341,14 +355,19 @@ export class DocumentEffects {
       filter((action) => action.organized_count > 0),
       withLatestFrom(this.store.select(documentFeature.selectCurrentCriteria)),
       filter(([, criteria]) => !!criteria?.folder_id), // Only refresh when viewing a specific folder
-      map(([, criteria]) => DocumentActions.fetchDocumentsCommand({ criteria: criteria || {} }))
+      map(([, criteria]) =>
+        DocumentActions.fetchDocumentsCommand({ criteria: criteria || {} })
+      )
     )
   );
 
   // Listen to WebSocket document processing updates
   listenToDocumentProcessing$ = createEffect(() =>
     this.webSocketService.messages$.pipe(
-      filter((msg): msg is DocumentProcessingEvent => msg.type === 'document_processing'),
+      filter(
+        (msg): msg is DocumentProcessingEvent =>
+          msg.type === 'document_processing'
+      ),
       map((event) => {
         // Check if it's an error event
         if (event.error || event.stage === 'failed') {
@@ -357,11 +376,11 @@ export class DocumentEffects {
             error: event.error || event.message || 'Processing failed',
           });
         }
-        
+
         // Calculate overall progress based on stage and progress
         let overallProgress = 0;
         const rawProgress = event.progress; // 0-1 from backend
-        
+
         // Map stages to overall progress ranges
         // First task (process_document): 0-30%
         // Second task (generate_document_embeddings): 30-70%
@@ -380,7 +399,10 @@ export class DocumentEffects {
             }
             break;
           case 'extracting':
-            if (event.message?.includes('summary') || event.message?.includes('language model')) {
+            if (
+              event.message?.includes('summary') ||
+              event.message?.includes('language model')
+            ) {
               // Summary generation
               overallProgress = 75 + Math.round(rawProgress * 15); // 75-90%
             } else {
@@ -410,7 +432,7 @@ export class DocumentEffects {
             // Fallback to simple conversion
             overallProgress = Math.round(rawProgress * 100);
         }
-        
+
         // Check if processing is complete
         if (event.stage === 'completed' || overallProgress >= 100) {
           // Extract document data from event
@@ -421,9 +443,12 @@ export class DocumentEffects {
               document,
             });
           }
-          
+
           // If completed but no document data, log error and treat as failure
-          console.error('Document processing completed but no document data received', event);
+          console.error(
+            'Document processing completed but no document data received',
+            event
+          );
           return DocumentActions.documentProcessingFailureEvent({
             documentId: event.document_id,
             error: 'Processing completed but document data is missing',

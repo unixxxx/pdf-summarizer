@@ -131,10 +131,12 @@ export class DocumentService {
   /**
    * Apply document organization by moving selected documents to their assigned folders
    */
-  applyOrganization(assignments: Array<{
-    document_id: string;
-    folder_id: string;
-  }>): Observable<{
+  applyOrganization(
+    assignments: Array<{
+      documentId: string;
+      folderId: string;
+    }>
+  ): Observable<{
     message: string;
     organized_count: number;
     errors?: string[];
@@ -143,7 +145,13 @@ export class DocumentService {
       message: string;
       organized_count: number;
       errors?: string[];
-    }>(`${this.baseUrl}/organize/apply`, assignments);
+    }>(
+      `${this.baseUrl}/organize/apply`,
+      assignments.map((assignment) => ({
+        document_id: assignment.documentId,
+        folder_id: assignment.folderId,
+      }))
+    );
   }
 
   private buildParams(criteria?: DocumentSearchCriteria): HttpParams {

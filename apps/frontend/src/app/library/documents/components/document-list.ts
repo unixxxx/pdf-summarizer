@@ -15,6 +15,7 @@ import { DocumentActions } from '../store/document.actions';
 import { documentFeature } from '../store/document.feature';
 import { DocumentListItem } from '../store/state/document';
 import { FolderActions } from '../../folder/store/folder.actions';
+import { folderFeature } from '../../folder/store/folder.feature';
 
 @Component({
   selector: 'app-document-list',
@@ -150,10 +151,12 @@ export class DocumentList {
   protected documentsEmpty = this.store.selectSignal(
     documentFeature.selectDocumentsEmpty
   );
+  protected selectedFolderId = this.store.selectSignal(
+    folderFeature.selectSelectedFolderId
+  );
 
   // Local search state
   protected searchQuery = '';
-  private currentFolderId: string | undefined;
 
   // Drag state
   protected draggedDocumentId = signal<string | null>(null);
@@ -164,7 +167,7 @@ export class DocumentList {
       DocumentActions.fetchDocumentsCommand({
         criteria: {
           search: this.searchQuery || undefined,
-          folder_id: this.currentFolderId,
+          folder_id: this.selectedFolderId(),
         },
       })
     );

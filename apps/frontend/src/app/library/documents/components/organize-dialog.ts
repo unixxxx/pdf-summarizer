@@ -4,30 +4,12 @@ import {
   ChangeDetectionStrategy,
   signal,
   computed,
-  Input,
+  input,
   OnInit,
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { MODAL_REF, ModalRef } from '../../../core/services/modal';
-
-export interface OrganizeSuggestion {
-  document_id: string;
-  document_name: string;
-  document_tags: string[];
-  suggested_folder_id: string;
-  suggested_folder_name: string;
-  folder_tags: string[];
-  similarity_score: number;
-  matching_tags: string[];
-}
-
-export interface OrganizeDialogResult {
-  organize: boolean;
-  selectedAssignments: Array<{
-    document_id: string;
-    folder_id: string;
-  }>;
-}
+import { OrganizeSuggestion, OrganizeDialogResult } from '../dtos/organize-dialog';
 
 @Component({
   selector: 'app-organize-dialog',
@@ -122,17 +104,17 @@ export interface OrganizeDialogResult {
               <p class="text-sm text-muted-foreground mb-1">
                 Found
                 <span class="font-medium text-foreground">{{
-                  total_unfiled
+                  totalUnfiled()
                 }}</span>
                 unfiled documents,
                 <span class="font-medium text-foreground">{{
-                  total_with_tags
+                  totalWithTags()
                 }}</span>
                 have tags for matching.
               </p>
-              @if (suggestions.length > 0) {
+              @if (suggestions().length > 0) {
               <p class="text-sm font-medium text-foreground">
-                {{ suggestions.length }} documents can be automatically
+                {{ suggestions().length }} documents can be automatically
                 organized.
               </p>
               } @else {
@@ -145,7 +127,7 @@ export interface OrganizeDialogResult {
         </div>
 
         <!-- Suggestions List -->
-        @if (suggestions.length > 0) {
+        @if (suggestions().length > 0) {
         <div class="space-y-3">
           <div class="flex items-center justify-between mb-3">
             <h3 class="text-sm font-medium text-foreground">
@@ -167,7 +149,8 @@ export interface OrganizeDialogResult {
               {{ allSelected() ? 'Deselect All' : 'Select All' }}
             </button>
           </div>
-          @for (suggestion of displayedSuggestions(); track suggestion.document_id) {
+          @for (suggestion of displayedSuggestions(); track
+          suggestion.document_id) {
           <div
             class="group p-4 bg-background border rounded-lg transition-all cursor-pointer"
             [class.border-primary-500]="isSelected(suggestion.document_id)"
@@ -177,8 +160,12 @@ export interface OrganizeDialogResult {
                 }"
             [class.hover:shadow-sm]="!isSelected(suggestion.document_id)"
             (click)="toggleSelection(suggestion.document_id)"
-            (keydown.space)="toggleSelection(suggestion.document_id); $event.preventDefault()"
-            (keydown.enter)="toggleSelection(suggestion.document_id); $event.preventDefault()"
+            (keydown.space)="
+              toggleSelection(suggestion.document_id); $event.preventDefault()
+            "
+            (keydown.enter)="
+              toggleSelection(suggestion.document_id); $event.preventDefault()
+            "
             tabindex="0"
             role="button"
             [attr.aria-pressed]="isSelected(suggestion.document_id)"
@@ -190,7 +177,10 @@ export interface OrganizeDialogResult {
                   type="checkbox"
                   [checked]="isSelected(suggestion.document_id)"
                   class="h-4 w-4 rounded border-border text-primary-600 focus:ring-primary-500"
-                  (click)="toggleSelection(suggestion.document_id); $event.stopPropagation()"
+                  (click)="
+                    toggleSelection(suggestion.document_id);
+                    $event.stopPropagation()
+                  "
                 />
               </div>
 
@@ -202,32 +192,31 @@ export interface OrganizeDialogResult {
                     {{ suggestion.document_name }}
                   </h4>
                   <div class="flex flex-wrap gap-1.5">
-                    @for (tag of suggestion.document_tags; track tag) {
-                      @if (suggestion.matching_tags.includes(tag)) {
-                        <span
-                          class="inline-flex items-center px-2 py-0.5 text-xs font-medium rounded-full transition-colors bg-primary-500/10 text-primary-700 ring-1 ring-primary-500/20"
-                        >
-                          <svg
-                            class="w-3 h-3 mr-1"
-                            fill="currentColor"
-                            viewBox="0 0 20 20"
-                          >
-                            <path
-                              fill-rule="evenodd"
-                              d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
-                              clip-rule="evenodd"
-                            />
-                          </svg>
-                          {{ tag }}
-                        </span>
-                      } @else {
-                        <span
-                          class="inline-flex items-center px-2 py-0.5 text-xs font-medium rounded-full transition-colors bg-muted/50 text-muted-foreground"
-                        >
-                          {{ tag }}
-                        </span>
-                      }
-                    }
+                    @for (tag of suggestion.document_tags; track tag) { @if
+                    (suggestion.matching_tags.includes(tag)) {
+                    <span
+                      class="inline-flex items-center px-2 py-0.5 text-xs font-medium rounded-full transition-colors bg-primary-500/10 text-primary-700 ring-1 ring-primary-500/20"
+                    >
+                      <svg
+                        class="w-3 h-3 mr-1"
+                        fill="currentColor"
+                        viewBox="0 0 20 20"
+                      >
+                        <path
+                          fill-rule="evenodd"
+                          d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                          clip-rule="evenodd"
+                        />
+                      </svg>
+                      {{ tag }}
+                    </span>
+                    } @else {
+                    <span
+                      class="inline-flex items-center px-2 py-0.5 text-xs font-medium rounded-full transition-colors bg-muted/50 text-muted-foreground"
+                    >
+                      {{ tag }}
+                    </span>
+                    } }
                   </div>
                 </div>
 
@@ -296,9 +285,7 @@ export interface OrganizeDialogResult {
               </div>
             </div>
           </div>
-          }
-
-          @if (hasMore()) {
+          } @if (hasMore()) {
           <div class="mt-4 text-center">
             <button
               (click)="showAll.set(!showAll())"
@@ -318,8 +305,7 @@ export interface OrganizeDialogResult {
                   d="M5 15l7-7 7 7"
                 />
               </svg>
-              Show less
-              } @else {
+              Show less } @else {
               <svg
                 class="w-4 h-4"
                 fill="none"
@@ -333,8 +319,7 @@ export interface OrganizeDialogResult {
                   d="M19 9l-7 7-7-7"
                 />
               </svg>
-              Show all {{ suggestions.length }} suggestions
-              }
+              Show all {{ suggestions().length }} suggestions }
             </button>
           </div>
           }
@@ -344,57 +329,57 @@ export interface OrganizeDialogResult {
 
       <!-- Footer -->
       <div class="modal-footer p-6 border-t border-border bg-muted/5">
-          <div class="flex items-center justify-between">
-            <div class="text-sm text-muted-foreground">
-              @if (selectedCount() > 0) {
-                {{ selectedCount() }} of {{ suggestions.length }} selected
-              } @else if (suggestions.length > 0) {
-                No documents selected
-              }
-            </div>
-            <div class="flex items-center gap-3">
-              <button
-                (click)="cancel()"
-                class="px-4 py-2.5 text-sm font-medium text-foreground bg-background border border-border rounded-lg hover:bg-muted/50 transition-all"
-              >
-                Cancel
-              </button>
-              <button
-                (click)="organize()"
-                [disabled]="selectedCount() === 0"
-                class="px-6 py-2.5 text-sm font-medium text-white bg-gradient-to-r from-primary-600 to-accent-600 rounded-lg hover:shadow-lg transform hover:scale-[1.02] transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none disabled:shadow-none"
-              >
-                <span class="flex items-center gap-2">
-                  <svg
-                    class="w-4 h-4"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                      stroke-width="2"
-                      d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"
-                    />
-                  </svg>
-                  Organize {{ selectedCount() }}
-                  {{ selectedCount() === 1 ? 'Document' : 'Documents' }}
-                </span>
-              </button>
-            </div>
+        <div class="flex items-center gap-3 justify-between">
+          <div class="text-sm text-muted-foreground">
+            @if (selectedCount() > 0) {
+            {{ selectedCount() }} of {{ suggestions().length }} selected
+            } @else if (suggestions().length > 0) {
+            No documents selected
+            }
+          </div>
+          <div class="flex items-center gap-3">
+            <button
+              (click)="cancel()"
+              class="px-4 py-2.5 text-sm font-medium text-foreground bg-background border border-border rounded-lg hover:bg-muted/50 transition-all"
+            >
+              Cancel
+            </button>
+            <button
+              (click)="organize()"
+              [disabled]="selectedCount() === 0"
+              class="px-6 py-2.5 text-sm font-medium text-white bg-gradient-to-r from-primary-600 to-accent-600 rounded-lg hover:shadow-lg transform hover:scale-[1.02] transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none disabled:shadow-none"
+            >
+              <span class="flex items-center gap-2">
+                <svg
+                  class="w-4 h-4"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"
+                  />
+                </svg>
+                Organize {{ selectedCount() }}
+                {{ selectedCount() === 1 ? 'Document' : 'Documents' }}
+              </span>
+            </button>
           </div>
         </div>
+      </div>
     </div>
   `,
 })
 export class OrganizeDialog implements OnInit {
   private modalRef = inject<ModalRef<OrganizeDialogResult>>(MODAL_REF);
 
-  // Input properties
-  @Input() suggestions: OrganizeSuggestion[] = [];
-  @Input() total_unfiled = 0;
-  @Input() total_with_tags = 0;
+  // Input properties using new Angular syntax
+  suggestions = input<OrganizeSuggestion[]>([]);
+  totalUnfiled = input(0);
+  totalWithTags = input(0);
 
   protected showAll = signal(false);
   protected readonly MAX_INITIAL_DISPLAY = 10;
@@ -403,33 +388,34 @@ export class OrganizeDialog implements OnInit {
   protected selectedIds = signal<Set<string>>(new Set());
 
   protected displayedSuggestions = computed(() => {
-    if (this.showAll() || this.suggestions.length <= this.MAX_INITIAL_DISPLAY) {
-      return this.suggestions;
+    const suggestionsList = this.suggestions();
+    if (this.showAll() || suggestionsList.length <= this.MAX_INITIAL_DISPLAY) {
+      return suggestionsList;
     }
-    return this.suggestions.slice(0, this.MAX_INITIAL_DISPLAY);
+    return suggestionsList.slice(0, this.MAX_INITIAL_DISPLAY);
   });
 
   protected hasMore = computed(
-    () => this.suggestions.length > this.MAX_INITIAL_DISPLAY
+    () => this.suggestions().length > this.MAX_INITIAL_DISPLAY
   );
 
   protected selectedCount = computed(() => this.selectedIds().size);
 
   protected allSelected = computed(
     () =>
-      this.suggestions.length > 0 &&
-      this.selectedIds().size === this.suggestions.length
+      this.suggestions().length > 0 &&
+      this.selectedIds().size === this.suggestions().length
   );
 
   protected someSelected = computed(
     () =>
       this.selectedIds().size > 0 &&
-      this.selectedIds().size < this.suggestions.length
+      this.selectedIds().size < this.suggestions().length
   );
 
   ngOnInit() {
     // Select all suggestions by default
-    const allIds = new Set(this.suggestions.map((s) => s.document_id));
+    const allIds = new Set(this.suggestions().map((s) => s.document_id));
     this.selectedIds.set(allIds);
   }
 
@@ -449,7 +435,7 @@ export class OrganizeDialog implements OnInit {
     if (this.allSelected()) {
       this.selectedIds.set(new Set());
     } else {
-      const allIds = new Set(this.suggestions.map((s) => s.document_id));
+      const allIds = new Set(this.suggestions().map((s) => s.document_id));
       this.selectedIds.set(allIds);
     }
   }
@@ -463,11 +449,11 @@ export class OrganizeDialog implements OnInit {
   }
 
   organize() {
-    const selectedAssignments = this.suggestions
+    const selectedAssignments = this.suggestions()
       .filter((s) => this.selectedIds().has(s.document_id))
       .map((s) => ({
-        document_id: s.document_id,
-        folder_id: s.suggested_folder_id,
+        documentId: s.document_id,
+        folderId: s.suggested_folder_id,
       }));
 
     this.modalRef.dismiss({

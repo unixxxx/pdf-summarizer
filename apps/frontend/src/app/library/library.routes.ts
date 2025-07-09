@@ -25,6 +25,9 @@ export const libraryRoutes: Routes = [
                 criteria: {},
               })
             );
+            store.dispatch(
+              FolderActions.selectFolderCommand({ folderId: undefined })
+            );
             return true;
           },
         },
@@ -47,6 +50,9 @@ export const libraryRoutes: Routes = [
                 },
               })
             );
+            store.dispatch(
+              FolderActions.selectFolderCommand({ folderId: undefined })
+            );
             return true;
           },
         },
@@ -61,6 +67,9 @@ export const libraryRoutes: Routes = [
           init: () => {
             const store = inject(Store);
             store.dispatch(ArchiveActions.fetchArchiveCommand());
+            store.dispatch(
+              FolderActions.selectFolderCommand({ folderId: undefined })
+            );
             return true;
           },
         },

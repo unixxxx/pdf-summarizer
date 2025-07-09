@@ -407,8 +407,8 @@ export const folderReducer = createReducer<FolderState>(
     // Count documents going to each folder
     const folderCounts = new Map<string, number>();
     assignments.forEach(assignment => {
-      const count = folderCounts.get(assignment.folder_id) || 0;
-      folderCounts.set(assignment.folder_id, count + 1);
+      const count = folderCounts.get(assignment.folderId) || 0;
+      folderCounts.set(assignment.folderId, count + 1);
     });
     
     // Update counts for each affected folder and its ancestors

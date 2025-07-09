@@ -86,10 +86,10 @@ export const DocumentActions = createActionGroup({
 
     // Organize documents
     'Open Organize Dialog Command': emptyProps(),
-    'Apply Organization Command': props<{ 
+    'Apply Organization Command': props<{
       assignments: Array<{
-        document_id: string;
-        folder_id: string;
+        documentId: string;
+        folderId: string;
       }>;
     }>(),
     'Apply Organization Success Event': props<{
@@ -97,8 +97,8 @@ export const DocumentActions = createActionGroup({
       organized_count: number;
       errors?: string[];
       assignments: Array<{
-        document_id: string;
-        folder_id: string;
+        documentId: string;
+        folderId: string;
       }>;
     }>(),
     'Apply Organization Failure Event': props<{ error: string }>(),

@@ -361,7 +361,7 @@ export const documentReducer = createReducer(
     (state, { assignments }) => {
       // Create a map of document IDs to their new folder IDs
       const assignmentMap = new Map(
-        assignments.map(a => [a.document_id, a.folder_id])
+        assignments.map(a => [a.documentId, a.documentId])
       );
 
       // Update documents with their new folder IDs
@@ -385,7 +385,7 @@ export const documentReducer = createReducer(
 
       if (viewingUnfiled) {
         // If viewing unfiled, remove all organized documents
-        const organizedDocIds = new Set(assignments.map(a => a.document_id));
+        const organizedDocIds = new Set(assignments.map(a => a.documentId));
         filteredData = updatedData.filter(doc => !organizedDocIds.has(doc.documentId));
         removedCount = assignments.length;
       } else if (viewingSpecificFolder) {
